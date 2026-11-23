@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gitpress CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: routed app. Home (sign in) > Accounts (you + orgs) > Repositories > Dashboard (editor workbench). */
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --line: #dde0e6;
+  --fg: #15181e;
+  --muted: #5d6573;
+  --accent: #d9481c;
+  --accent-fg: #ffffff;
+  --ok: #1d7a4a;
+  --bad: #b42318;
+  --code-bg: #eceef2;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --panel: #171b21; --line: #2a303a; --fg: #e8eaee; --muted: #98a1b0;
+    --accent: #ff6a3d; --accent-fg: #1a0b05; --ok: #52c58a; --bad: #ff8a7a; --code-bg: #1f252d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --panel: #171b21; --line: #2a303a; --fg: #e8eaee; --muted: #98a1b0;
+  --accent: #ff6a3d; --accent-fg: #1a0b05; --ok: #52c58a; --bad: #ff8a7a; --code-bg: #1f252d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+.top {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0;
+}
+.brand { font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; text-decoration: none; flex: none; }
+.brand svg { color: var(--accent); }
+.crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 13px; }
+.crumbs a { color: var(--muted); text-decoration: none; }
+.crumbs a:hover { color: var(--fg); text-decoration: underline; }
+.crumbs .cur { color: var(--fg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.spacer { flex: 1; }
+.me { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex: none; }
+.me img { width: 22px; height: 22px; border-radius: 50%; }
+
+.btn {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
+  padding: 6px 12px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.dark { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.btn.danger { color: var(--bad); }
+.btn.danger.armed { background: var(--bad); border-color: var(--bad); color: var(--panel); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+.btn.wide { width: 100%; padding: 9px 12px; }
+
+/* Pages */
+.page { flex: 1; overflow: auto; padding-block: 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.col { max-width: 720px; margin: 0 auto; }
+.col.narrow { max-width: 440px; margin-top: 4vh; }
+.page h1 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 4px; text-wrap: balance; }
+.page .lede { color: var(--muted); margin: 0 0 22px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.field input[type=text], .field input[type=password] {
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--bg); width: 100%;
+}
+.check { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+.hint { font-size: 12px; color: var(--muted); }
+.err { color: var(--bad); font-size: 13px; margin: 0 0 12px; min-height: 1em; }
+.or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin: 16px 0; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.scopes { font-family: var(--mono); font-size: 12px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+
+/* Lists of links */
+.links { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.link {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-decoration: none; min-width: 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+}
+.link:hover { border-color: var(--accent); }
+.link img { width: 36px; height: 36px; border-radius: 8px; flex: none; background: var(--code-bg); }
+.link .main { min-width: 0; flex: 1; }
+.link .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link .sub { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link .meta { color: var(--muted); font-size: 12px; flex: none; text-align: right; }
+.link .chev { color: var(--muted); flex: none; }
+.badge { font-size: 11px; font-weight: 500; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); margin-left: 6px; vertical-align: 1px; }
+.section-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 22px 0 8px; }
+.section-label:first-of-type { margin-top: 0; }
+.tools { display: flex; gap: 8px; margin-bottom: 14px; }
+.tools input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--panel); }
+.state { color: var(--muted); padding: 28px 8px; text-align: center; }
+.state.bad { color: var(--bad); }
+
+/* Dashboard workbench */
+.work { flex: 1; display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 0; }
+.side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.side-head { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+.side-head .r { display: flex; gap: 8px; }
+.side-head input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; background: var(--bg); }
+.tree { overflow: auto; flex: 1; padding: 6px; }
+.item {
+  display: flex; flex-direction: column; width: 100%; text-align: left; border: 0; background: none;
+  padding: 6px 10px; border-radius: 6px; min-width: 0;
+}
+.item:hover { background: var(--bg); }
+.item.active { background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); }
+.item .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .dir { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { color: var(--muted); padding: 16px; text-align: center; }
+
+.editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ed-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.path { font-family: var(--mono); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-left: auto; }
+.tabs button { border: 0; background: none; padding: 4px 12px; font-size: 13px; }
+.tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); }
+.ed-body { flex: 1; overflow: auto; padding: 16px; min-height: 0; display: flex; flex-direction: column; }
+.ed-inner { max-width: 820px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.fm-label, .body-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+textarea.code {
+  width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+  padding: 12px; font-family: var(--mono); font-size: 13px; line-height: 1.6; resize: vertical;
+}
+#fm { min-height: 110px; }
+#body { flex: 1; min-height: 320px; }
+.placeholder { margin: auto; text-align: center; color: var(--muted); max-width: 320px; }
+.placeholder strong { color: var(--fg); display: block; font-size: 16px; margin-bottom: 4px; }
+
+.commit { display: flex; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); align-items: center; flex-wrap: wrap; }
+.commit input { flex: 1; min-width: 180px; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--bg); }
+
+/* Preview typography */
+.preview { max-width: 720px; margin: 0 auto; font-size: 16px; line-height: 1.7; }
+.preview h1, .preview h2, .preview h3, .preview h4 { letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; margin: 1.6em 0 .5em; }
+.preview h1 { font-size: 30px; margin-top: 0; }
+.preview h2 { font-size: 23px; }
+.preview h3 { font-size: 18px; }
+.preview p, .preview ul, .preview ol, .preview blockquote, .preview pre { margin: 0 0 1em; }
+.preview a { color: var(--accent); }
+.preview code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+.preview pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+.preview pre code { background: none; padding: 0; }
+.preview blockquote { border-left: 3px solid var(--line); padding-left: 14px; color: var(--muted); }
+.preview img { max-width: 100%; border-radius: 6px; }
+.preview hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+.fm-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 20px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; color: var(--muted); }
+
+.toast {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
+  padding: 9px 16px; border-radius: 8px; font-weight: 500; max-width: calc(100% - 32px); z-index: 20;
+}
+.toast.bad { background: var(--bad); color: var(--panel); }
+
+@media (max-width: 760px) {
+  .work { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 34%) minmax(0, 1fr); }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .me span { display: none; }
+  .link .meta { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .item, .link { transition: background .12s, border-color .12s; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <a class="brand" href="#/accounts">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="4.5" r="2"/><circle cx="5" cy="15.5" r="2"/><circle cx="15" cy="8" r="2"/><path d="M5 6.5v7M15 10c0 3-4 2.5-9 4.5"/></svg>
+      Gitpress
+    </a>
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+    <span class="spacer"></span>
+    <div class="me" id="me" hidden><img id="meImg" alt=""><span id="meName"></span></div>
+    <button class="btn small" id="themeBtn" type="button">Theme</button>
+    <button class="btn small" id="signOutBtn" type="button" hidden>Sign out</button>
+  </header>
+
+  <!-- 1. Home -->
+  <main id="homeView" class="page" hidden>
+    <div class="col narrow">
+      <h1>Sign in to Gitpress</h1>
+      <p class="lede">Edit the content of your GitHub repositories and save each change as a commit.</p>
+      <div class="card">
+        <a class="btn dark wide" id="ghBtn" target="_blank" rel="noopener noreferrer"
+           href="https://github.com/settings/tokens/new?scopes=repo,read:org&amp;description=Gitpress">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          Continue with GitHub
+        </a>
+        <p class="hint" style="margin:8px 0 0">Opens GitHub with the right permissions filled in. Click <em>Generate token</em>, copy it, and paste it below.</p>
+        <div class="or">or</div>
+        <form id="keyForm" autocomplete="off">
+          <div class="field">
+            <label for="tokenIn">Access key</label>
+            <input id="tokenIn" type="password" placeholder="ghp_... or github_pat_..." spellcheck="false" required>
+            <span class="hint">Needs the <span class="scopes">repo</span> and <span class="scopes">read:org</span> scopes so your organizations and private repos show up.</span>
+          </div>
+          <label class="check"><input type="checkbox" id="rememberIn"> Remember this key on this device</label>
+          <p class="err" id="keyErr" role="alert"></p>
+          <button class="btn primary wide" type="submit" id="keyBtn">Sign in</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <!-- 2. Accounts -->
+  <main id="accountsView" class="page" hidden>
+    <div class="col">
+      <h1>Choose an account</h1>
+      <p class="lede">Your own repositories, followed by each organization you belong to.</p>
+      <div id="accountsBody"></div>
+    </div>
+  </main>
+
+  <!-- 3. Repositories -->
+  <main id="reposView" class="page" hidden>
+    <div class="col">
+      <h1 id="reposTitle"></h1>
+      <p class="lede" id="reposLede"></p>
+      <div class="tools">
+        <input id="repoFilter" type="text" placeholder="Filter repositories" aria-label="Filter repositories">
+      </div>
+      <div id="reposBody"></div>
+    </div>
+  </main>
+
+  <!-- 4. Dashboard -->
+  <div id="dashView" class="work" hidden>
+    <aside class="side">
+      <div class="side-head">
+        <div class="r">
+          <input id="dirIn" type="text" placeholder="Content folder (blank = whole repo)" aria-label="Content folder" spellcheck="false">
+        </div>
+        <div class="r">
+          <input id="filterIn" type="text" placeholder="Filter files" aria-label="Filter files">
+          <button class="btn small" id="newBtn" type="button">New</button>
+        </div>
+      </div>
+      <div class="tree" id="tree"></div>
+    </aside>
+    <section class="editor">
+      <div class="ed-head" id="edHead" hidden>
+        <span class="dot" id="dirtyDot" hidden title="Unsaved changes"></span>
+        <span class="path" id="pathLabel"></span>
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" id="tabWrite" aria-selected="true">Write</button>
+          <button type="button" role="tab" id="tabPreview" aria-selected="false">Preview</button>
+        </div>
+      </div>
+      <div class="ed-body" id="edBody">
+        <div class="placeholder" id="placeholder"><strong>Pick a file</strong>Choose a file on the left, or create a new one.</div>
+        <div class="ed-inner" id="writePane" hidden>
+          <div class="fm-label">Front matter</div>
+          <textarea class="code" id="fm" spellcheck="false" aria-label="Front matter"></textarea>
+          <div class="body-label">Body</div>
+          <textarea class="code" id="body" spellcheck="true" aria-label="Body"></textarea>
+        </div>
+        <div class="preview" id="previewPane" hidden></div>
+      </div>
+      <div class="commit" id="commitBar" hidden>
+        <input id="msgIn" type="text" placeholder="Commit message" aria-label="Commit message">
+        <button class="btn danger" id="delBtn" type="button">Delete</button>
+        <button class="btn" id="revertBtn" type="button">Discard changes</button>
+        <button class="btn primary" id="saveBtn" type="button">Commit</button>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var EXT = /\.(md|mdx|markdown|txt|json|ya?ml|html)$/i;
+  var VIEWS = ["homeView", "accountsView", "reposView", "dashView"];
+  var state = {
+    token: null, me: null, orgs: null, cfg: null, files: [], cur: null, orig: null,
+    pendingOpen: null, delArmed: false, repoCache: {}, routeSeq: 0
+  };
+  var toastTimer, lastHash = "", guardSkip = false;
+
+  /* ---------- helpers ---------- */
+  function safeGet(s, k) { try { return s.getItem(k); } catch (e) { return null; } }
+  function safeSet(s, k, v) { try { s.setItem(k, v); } catch (e) {} }
+  function safeDel(s, k) { try { s.removeItem(k); } catch (e) {} }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function toast(msg, bad) {
+    var t = $("toast");
+    t.textContent = msg; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, bad ? 6000 : 2600);
+  }
+  function enc(path) { return path.split("/").map(encodeURIComponent).join("/"); }
+  function b64decode(b64) {
+    var bin = atob(b64.replace(/\n/g, ""));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  function b64encode(str) {
+    var bytes = new TextEncoder().encode(str), bin = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function ago(iso) {
+    if (!iso) return "";
+    var d = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (d < 3600) return Math.max(1, Math.round(d / 60)) + " min ago";
+    if (d < 86400) return Math.round(d / 3600) + " h ago";
+    if (d < 86400 * 60) return Math.round(d / 86400) + " d ago";
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  }
+
+  /* ---------- GitHub API ---------- */
+  function gh(path, opts) {
+    opts = opts || {};
+    var headers = {
+      "Accept": "application/vnd.github+json",
+      "Authorization": "Bearer " + state.token,
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+    if (opts.body) headers["Content-Type"] = "application/json";
+    return fetch(path.indexOf("http") === 0 ? path : "https://api.github.com" + path,
+      { method: opts.method || "GET", headers: headers, body: opts.body })
+      .then(function (r) {
+        if (r.ok) return r.status === 204 ? null : r.json();
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          var e = new Error(j.message || r.statusText);
+          e.status = r.status; throw e;
+        });
+      });
+  }
+  function ghAll(path) {
+    var out = [], sep = path.indexOf("?") === -1 ? "?" : "&";
+    function page(n) {
+      return gh(path + sep + "per_page=100&page=" + n).then(function (items) {
+        out = out.concat(items);
+        return items.length === 100 && n < 20 ? page(n + 1) : out;
+      });
+    }
+    return page(1);
+  }
+  function repoPath() { return "/repos/" + state.cfg.owner + "/" + state.cfg.repo; }
+
+  /* ---------- auth ---------- */
+  function signIn(token, remember) {
+    state.token = token;
+    return gh("/user").then(function (me) {
+      state.me = me;
+      var store = remember ? localStorage : sessionStorage;
+      safeDel(localStorage, "gitpress-key"); safeDel(sessionStorage, "gitpress-key");
+      safeSet(store, "gitpress-key", token);
+      return gh("/user/orgs?per_page=100").catch(function () { return null; });
+    }).then(function (orgs) {
+      state.orgs = orgs;
+      $("me").hidden = false; $("meImg").src = state.me.avatar_url; $("meName").textContent = state.me.login;
+      $("signOutBtn").hidden = false;
+    });
+  }
+  function signOut() {
+    safeDel(localStorage, "gitpress-key"); safeDel(sessionStorage, "gitpress-key");
+    state.token = null; state.me = null; state.orgs = null; state.repoCache = {}; state.cur = null;
+    $("tokenIn").value = ""; $("me").hidden = true; $("signOutBtn").hidden = true;
+    go("#/");
+  }
+  $("signOutBtn").addEventListener("click", function () {
+    if (isDirty()) { toast("Commit or discard your changes before signing out.", true); return; }
+    signOut();
+  });
+
+  $("keyForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var err = $("keyErr"); err.textContent = "";
+    var token = $("tokenIn").value.trim();
+    $("keyBtn").disabled = true; $("keyBtn").textContent = "Signing in...";
+    signIn(token, $("rememberIn").checked).then(function () {
+      $("tokenIn").value = "";
+      go("#/accounts");
+    }).catch(function (ex) {
+      state.token = null;
+      err.textContent = ex.status === 401 ? "GitHub rejected this key. Check that it is correct and has not expired." : "Could not sign in: " + ex.message;
+    }).then(function () { $("keyBtn").disabled = false; $("keyBtn").textContent = "Sign in"; });
+  });
+
+  /* ---------- router ---------- */
+  function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
+  function showView(id) { VIEWS.forEach(function (v) { $(v).hidden = v !== id; }); }
+  function setCrumbs(items) {
+    var box = $("crumbs"); box.innerHTML = "";
+    items.forEach(function (c, i) {
+      if (i) box.appendChild(el("span", null, "/"));
+      if (c.href) { var a = el("a", null, c.label); a.href = c.href; box.appendChild(a); }
+      else box.appendChild(el("span", "cur", c.label));
+    });
+  }
+  function parts() {
+    return location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  }
+
+  window.addEventListener("hashchange", function () {
+    if (guardSkip) { guardSkip = false; return; }
+    if (isDirty() && !$("dashView").hidden) {
+      guardSkip = true; location.hash = lastHash;
+      toast("You have uncommitted changes. Commit or discard them first.", true);
+      return;
+    }
+    render();
+  });
+
+  function render() {
+    lastHash = location.hash;
+    var seq = ++state.routeSeq, p = parts();
+    if (!state.token) { renderHome(); return; }
+    if (!p.length || p[0] === "") { go("#/accounts"); return; }
+    if (p[0] === "accounts") return renderAccounts();
+    if (p[0] === "o" && p[1]) return renderRepos(p[1], seq);
+    if (p[0] === "r" && p[1] && p[2]) return renderDash(p[1], p[2], seq);
+    go("#/accounts");
+  }
+
+  function renderHome() {
+    showView("homeView"); setCrumbs([]);
+    if (location.hash && location.hash !== "#/") { lastHash = "#/"; }
+  }
+
+  /* --- accounts --- */
+  function accountLink(login, avatar, title, sub) {
+    var a = el("a", "link"); a.href = "#/o/" + encodeURIComponent(login);
+    var img = el("img"); img.alt = ""; img.src = avatar; a.appendChild(img);
+    var m = el("div", "main"); m.appendChild(el("div", "title", title)); m.appendChild(el("div", "sub", sub)); a.appendChild(m);
+    a.appendChild(el("span", "chev", "›"));
+    return a;
+  }
+  function renderAccounts() {
+    showView("accountsView"); setCrumbs([{ label: "Accounts" }]);
+    var box = $("accountsBody"); box.innerHTML = "";
+    box.appendChild(el("div", "section-label", "You"));
+    var l1 = el("div", "links");
+    l1.appendChild(accountLink(state.me.login, state.me.avatar_url, state.me.login, state.me.name ? state.me.name + " · personal repositories" : "Personal repositories"));
+    box.appendChild(l1);
+    box.appendChild(el("div", "section-label", "Organizations"));
+    if (state.orgs === null) {
+      box.appendChild(el("div", "state bad", "Could not load organizations. Use a classic token with the read:org scope."));
+    } else if (!state.orgs.length) {
+      box.appendChild(el("div", "state", "You are not a member of any organization. If you expect some, a private org may require approving this token under the org's settings."));
+    } else {
+      var l2 = el("div", "links");
+      state.orgs.forEach(function (o) { l2.appendChild(accountLink(o.login, o.avatar_url, o.login, o.description || "Organization")); });
+      box.appendChild(l2);
+    }
+  }
+
+  /* --- repositories --- */
+  var repoList = [];
+  function renderRepos(login, seq) {
+    showView("reposView");
+    setCrumbs([{ label: "Accounts", href: "#/accounts" }, { label: login }]);
+    var isMe = login.toLowerCase() === state.me.login.toLowerCase();
+    $("reposTitle").textContent = login;
+    $("reposLede").textContent = isMe ? "Repositories you own." : "Repositories you can access in this organization.";
+    $("repoFilter").value = "";
+    var body = $("reposBody"); body.innerHTML = "";
+    body.appendChild(el("div", "state", "Loading repositories..."));
+    var cached = state.repoCache[login.toLowerCase()];
+    var req = cached ? Promise.resolve(cached)
+      : ghAll(isMe ? "/user/repos?affiliation=owner&sort=pushed" : "/orgs/" + encodeURIComponent(login) + "/repos?type=all&sort=pushed");
+    req.then(function (list) {
+      if (seq !== state.routeSeq) return;
+      state.repoCache[login.toLowerCase()] = list; repoList = list; drawRepos();
+    }).catch(function (e) {
+      if (seq !== state.routeSeq) return;
+      body.innerHTML = "";
+      var d = el("div", "state bad", e.status === 404 ? "Could not find repositories for " + login + ". The token may not have access to this organization." : "Could not load repositories: " + e.message);
+      body.appendChild(d);
+    });
+  }
+  function drawRepos() {
+    var q = $("repoFilter").value.trim().toLowerCase(), body = $("reposBody");
+    body.innerHTML = "";
+    var list = repoList.filter(function (r) {
+      return !q || r.name.toLowerCase().indexOf(q) !== -1 || (r.description || "").toLowerCase().indexOf(q) !== -1;
+    });
+    if (!list.length) { body.appendChild(el("div", "state", repoList.length ? "No repositories match." : "No repositories here yet.")); return; }
+    var ul = el("div", "links");
+    list.forEach(function (r) {
+      var a = el("a", "link"); a.href = "#/r/" + encodeURIComponent(r.owner.login) + "/" + encodeURIComponent(r.name);
+      var m = el("div", "main"), t = el("div", "title", r.name);
+      if (r.private) t.appendChild(el("span", "badge", "Private"));
+      if (r.archived) t.appendChild(el("span", "badge", "Archived"));
+      m.appendChild(t); m.appendChild(el("div", "sub", r.description || "No description"));
+      a.appendChild(m);
+      var meta = el("div", "meta"); meta.appendChild(el("div", null, r.language || ""));
+      meta.appendChild(el("div", null, "Updated " + ago(r.pushed_at || r.updated_at)));
+      a.appendChild(meta); a.appendChild(el("span", "chev", "›"));
+      ul.appendChild(a);
+    });
+    body.appendChild(ul);
+  }
+  $("repoFilter").addEventListener("input", drawRepos);
+
+  /* --- dashboard --- */
+  function renderDash(owner, repo, seq) {
+    showView("dashView");
+    setCrumbs([
+      { label: "Accounts", href: "#/accounts" },
+      { label: owner, href: "#/o/" + encodeURIComponent(owner) },
+      { label: repo }
+    ]);
+    if (state.cfg && state.cfg.owner === owner && state.cfg.repo === repo && state.files.length) return;
+    resetEditor();
+    state.cfg = { owner: owner, repo: repo, branch: null, dir: "" };
+    $("dirIn").value = "";
+    $("tree").innerHTML = ""; $("tree").appendChild(el("div", "empty", "Loading files..."));
+    gh("/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo)).then(function (r) {
+      if (seq !== state.routeSeq) return;
+      if (r.permissions && !r.permissions.push) toast("You can read this repository but not push to it.", true);
+      state.cfg.branch = r.default_branch;
+      return loadTree();
+    }).catch(function (e) {
+      if (seq !== state.routeSeq) return;
+      state.cfg = null; $("tree").innerHTML = "";
+      $("tree").appendChild(el("div", "empty", "Could not open repository: " + e.message));
+    });
+  }
+  function resetEditor() {
+    state.cur = null; state.orig = null; state.files = [];
+    $("edHead").hidden = true; $("commitBar").hidden = true; $("writePane").hidden = true;
+    $("previewPane").hidden = true; $("placeholder").hidden = false;
+  }
+  function loadTree() {
+    var cfg = state.cfg;
+    return gh(repoPath() + "/git/trees/" + encodeURIComponent(cfg.branch) + "?recursive=1").then(function (t) {
+      var prefix = cfg.dir ? cfg.dir.replace(/^\/|\/$/g, "") + "/" : "";
+      state.files = (t.tree || []).filter(function (n) {
+        return n.type === "blob" && n.path.indexOf(prefix) === 0 && EXT.test(n.path);
+      }).map(function (n) { return n.path; }).sort();
+      if (t.truncated) toast("Repository is large; the file list may be incomplete.", true);
+      renderTree();
+    });
+  }
+  $("dirIn").addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || !state.cfg) return;
+    if (isDirty()) { toast("Commit or discard your changes first.", true); return; }
+    state.cfg.dir = $("dirIn").value.trim();
+    loadTree().catch(function (ex) { toast(ex.message, true); });
+  });
+
+  /* ---------- file tree ---------- */
+  function renderTree() {
+    var q = $("filterIn").value.trim().toLowerCase();
+    var box = $("tree"); box.innerHTML = "";
+    var list = state.files.filter(function (p) { return !q || p.toLowerCase().indexOf(q) !== -1; });
+    if (!list.length) {
+      box.appendChild(el("div", "empty", state.files.length ? "No files match." : "No content files found here yet. Press Enter in the folder box to change folders."));
+      return;
+    }
+    list.forEach(function (p) {
+      var b = el("button", "item" + (state.cur && state.cur.path === p ? " active" : ""));
+      b.type = "button";
+      var i = p.lastIndexOf("/");
+      b.appendChild(el("span", "name", p.slice(i + 1)));
+      b.appendChild(el("span", "dir", i > 0 ? p.slice(0, i) : "/"));
+      b.addEventListener("click", function () { openFile(p); });
+      box.appendChild(b);
+    });
+  }
+  $("filterIn").addEventListener("input", renderTree);
+
+  /* ---------- front matter ---------- */
+  function split(text) {
+    var m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
+    return m ? { fm: m[1], body: m[2] } : { fm: "", body: text };
+  }
+  function join(fm, body) {
+    fm = fm.replace(/\s+$/, "");
+    return fm ? "---\n" + fm + "\n---\n\n" + body.replace(/^\n+/, "") : body;
+  }
+
+  /* ---------- editor ---------- */
+  function currentText() { return join($("fm").value, $("body").value); }
+  function isDirty() {
+    if (!state.cur) return false;
+    return state.cur.isNew || currentText() !== state.orig;
+  }
+  function refreshDirty() { $("dirtyDot").hidden = !isDirty(); }
+
+  function show(path, text, sha, isNew) {
+    var s = split(text);
+    state.cur = { path: path, sha: sha, isNew: !!isNew };
+    state.orig = isNew ? "" : text;
+    $("fm").value = s.fm; $("body").value = s.body;
+    $("pathLabel").textContent = path;
+    $("edHead").hidden = false; $("commitBar").hidden = false; $("placeholder").hidden = true;
+    $("delBtn").hidden = !!isNew;
+    $("msgIn").value = "";
+    $("msgIn").placeholder = (isNew ? "Add " : "Update ") + path.split("/").pop();
+    setTab("write");
+    state.pendingOpen = null; disarm();
+    refreshDirty(); renderTree();
+  }
+
+  function openFile(path) {
+    if (isDirty() && state.pendingOpen !== path) {
+      state.pendingOpen = path;
+      toast("Unsaved changes. Click the file again to discard them.", true);
+      return;
+    }
+    state.pendingOpen = null;
+    gh(repoPath() + "/contents/" + enc(path) + "?ref=" + encodeURIComponent(state.cfg.branch))
+      .then(function (f) { show(path, b64decode(f.content), f.sha, false); })
+      .catch(function (e) { toast("Could not open file: " + e.message, true); });
+  }
+
+  $("newBtn").addEventListener("click", function () {
+    if (!state.cfg) return;
+    if (isDirty() && state.pendingOpen !== "__new") {
+      state.pendingOpen = "__new";
+      toast("Unsaved changes. Click New again to discard them.", true); return;
+    }
+    var dir = state.cfg.dir ? state.cfg.dir.replace(/^\/|\/$/g, "") + "/" : "";
+    var stamp = new Date().toISOString().slice(0, 10);
+    var path = dir + "untitled-" + stamp + ".md";
+    var n = 2; while (state.files.indexOf(path) !== -1) { path = dir + "untitled-" + stamp + "-" + n++ + ".md"; }
+    show(path, "---\ntitle: Untitled\ndate: " + stamp + "\ndraft: true\n---\n\nStart writing here.\n", null, true);
+    $("pathLabel").contentEditable = "true"; $("pathLabel").focus();
+    document.getSelection().selectAllChildren($("pathLabel"));
+  });
+  $("pathLabel").addEventListener("blur", function () {
+    $("pathLabel").contentEditable = "false";
+    if (state.cur && state.cur.isNew) {
+      var p = $("pathLabel").textContent.trim().replace(/^\/+/, "");
+      if (p) { state.cur.path = p; $("msgIn").placeholder = "Add " + p.split("/").pop(); }
+      $("pathLabel").textContent = state.cur.path;
+    }
+  });
+  $("pathLabel").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("pathLabel").blur(); } });
+
+  $("fm").addEventListener("input", refreshDirty);
+  $("body").addEventListener("input", refreshDirty);
+
+  function setTab(which) {
+    var w = which === "write";
+    $("tabWrite").setAttribute("aria-selected", w); $("tabPreview").setAttribute("aria-selected", !w);
+    $("writePane").hidden = !w; $("previewPane").hidden = w;
+    if (!w) {
+      $("previewPane").innerHTML = ($("fm").value.trim() ? '<div class="fm-card">' + esc($("fm").value) + "</div>" : "") + md($("body").value);
+    }
+  }
+  $("tabWrite").addEventListener("click", function () { if (state.cur) setTab("write"); });
+  $("tabPreview").addEventListener("click", function () { if (state.cur) setTab("preview"); });
+
+  /* ---------- commit / delete ---------- */
+  function commit() {
+    var c = state.cur; if (!c) return;
+    if (!c.isNew && !isDirty()) { toast("Nothing to commit."); return; }
+    var text = currentText();
+    var msg = $("msgIn").value.trim() || $("msgIn").placeholder;
+    var body = { message: msg, content: b64encode(text), branch: state.cfg.branch };
+    if (c.sha) body.sha = c.sha;
+    $("saveBtn").disabled = true; $("saveBtn").textContent = "Committing...";
+    gh(repoPath() + "/contents/" + enc(c.path), { method: "PUT", body: JSON.stringify(body) })
+      .then(function (r) {
+        var wasNew = c.isNew;
+        c.sha = r.content.sha; c.isNew = false; state.orig = text;
+        if (wasNew && state.files.indexOf(c.path) === -1) { state.files.push(c.path); state.files.sort(); }
+        $("delBtn").hidden = false; $("msgIn").value = "";
+        $("msgIn").placeholder = "Update " + c.path.split("/").pop();
+        refreshDirty(); renderTree();
+        toast("Committed " + r.commit.sha.slice(0, 7));
+      })
+      .catch(function (e) {
+        toast(e.status === 409 || e.status === 422
+          ? "This file changed on GitHub since you opened it. Copy your text, reopen the file, and apply your edits."
+          : "Commit failed: " + e.message, true);
+      })
+      .then(function () { $("saveBtn").disabled = false; $("saveBtn").textContent = "Commit"; });
+  }
+  $("saveBtn").addEventListener("click", commit);
+  document.addEventListener("keydown", function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (state.cur && !$("dashView").hidden) commit(); }
+  });
+
+  $("revertBtn").addEventListener("click", function () {
+    if (!state.cur) return;
+    if (state.cur.isNew) { state.cur = null; resetEditorPane(); renderTree(); return; }
+    var s = split(state.orig); $("fm").value = s.fm; $("body").value = s.body; refreshDirty();
+    if (!$("previewPane").hidden) setTab("preview");
+  });
+  function resetEditorPane() {
+    $("edHead").hidden = true; $("commitBar").hidden = true; $("writePane").hidden = true;
+    $("previewPane").hidden = true; $("placeholder").hidden = false;
+  }
+
+  function disarm() { state.delArmed = false; $("delBtn").classList.remove("armed"); $("delBtn").textContent = "Delete"; }
+  $("delBtn").addEventListener("click", function () {
+    var c = state.cur; if (!c || c.isNew) return;
+    if (!state.delArmed) { state.delArmed = true; $("delBtn").classList.add("armed"); $("delBtn").textContent = "Click again to delete"; setTimeout(disarm, 4000); return; }
+    disarm();
+    var body = { message: $("msgIn").value.trim() || "Delete " + c.path.split("/").pop(), sha: c.sha, branch: state.cfg.branch };
+    gh(repoPath() + "/contents/" + enc(c.path), { method: "DELETE", body: JSON.stringify(body) })
+      .then(function () {
+        state.files = state.files.filter(function (p) { return p !== c.path; });
+        state.cur = null; resetEditorPane();
+        renderTree(); toast("Deleted " + c.path);
+      })
+      .catch(function (e) { toast("Delete failed: " + e.message, true); });
+  });
+
+  window.addEventListener("beforeunload", function (e) { if (isDirty()) { e.preventDefault(); e.returnValue = ""; } });
+
+  /* ---------- tiny markdown renderer (for the preview) ---------- */
+  function inline(s) {
+    s = esc(s);
+    var codes = [];
+    s = s.replace(/`([^`]+)`/g, function (_, c) { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (_, alt, u) { return safeUrl(u) ? '<img alt="' + alt + '" src="' + u + '">' : alt; });
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, t, u) { return safeUrl(u) ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + t + "</a>" : t; });
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    return s.replace(/\u0000(\d+)\u0000/g, function (_, i) { return "<code>" + codes[+i] + "</code>"; });
+  }
+  function safeUrl(u) { return /^(https?:\/\/|\/|\.\/|\.\.\/|#|[\w-]+\/|[\w.-]+$)/i.test(u) && !/^\s*javascript:/i.test(u); }
+  function md(src) {
+    var lines = src.replace(/\r/g, "").split("\n"), out = [], i = 0;
+    function para(buf) { if (buf.length) out.push("<p>" + inline(buf.join(" ")) + "</p>"); }
+    var buf = [];
+    while (i < lines.length) {
+      var l = lines[i], m;
+      if (/^```/.test(l)) {
+        para(buf); buf = []; var code = []; i++;
+        while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+        i++; out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); continue;
+      }
+      if ((m = /^(#{1,4})\s+(.*)$/.exec(l))) { para(buf); buf = []; out.push("<h" + m[1].length + ">" + inline(m[2]) + "</h" + m[1].length + ">"); i++; continue; }
+      if (/^(-{3,}|\*{3,})\s*$/.test(l)) { para(buf); buf = []; out.push("<hr>"); i++; continue; }
+      if (/^>\s?/.test(l)) {
+        para(buf); buf = []; var q = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) q.push(lines[i++].replace(/^>\s?/, ""));
+        out.push("<blockquote>" + inline(q.join(" ")) + "</blockquote>"); continue;
+      }
+      if (/^\s*([-*+]|\d+\.)\s+/.test(l)) {
+        para(buf); buf = [];
+        var ord = /^\s*\d+\./.test(l), items = [];
+        while (i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])) items.push("<li>" + inline(lines[i++].replace(/^\s*([-*+]|\d+\.)\s+/, "")) + "</li>");
+        out.push((ord ? "<ol>" : "<ul>") + items.join("") + (ord ? "</ol>" : "</ul>")); continue;
+      }
+      if (!l.trim()) { para(buf); buf = []; i++; continue; }
+      buf.push(l.trim()); i++;
+    }
+    para(buf);
+    return out.join("\n");
+  }
+
+  /* ---------- theme ---------- */
+  $("themeBtn").addEventListener("click", function () {
+    var root = document.documentElement, cur = root.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next); safeSet(localStorage, "gitpress-theme", next);
+  });
+  var savedTheme = safeGet(localStorage, "gitpress-theme");
+  if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
+
+  /* ---------- boot ---------- */
+  var saved = safeGet(sessionStorage, "gitpress-key") || safeGet(localStorage, "gitpress-key");
+  if (saved) {
+    $("rememberIn").checked = !!safeGet(localStorage, "gitpress-key");
+    signIn(saved, $("rememberIn").checked).then(render).catch(function (e) {
+      state.token = null; safeDel(localStorage, "gitpress-key"); safeDel(sessionStorage, "gitpress-key");
+      if (e.status === 401) $("keyErr").textContent = "Your saved key is no longer valid. Sign in again.";
+      render();
+    });
+  } else {
+    render();
+  }
+})();
+</script>
+</body>
+</html>
