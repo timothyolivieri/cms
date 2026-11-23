@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: routed app. Home (sign in) > Accounts (you + orgs) > Repositories > Dashboard (editor workbench). */
+/* Layout: routed app. Home (sign in) > Accounts > Repositories > Dashboard shell (left nav on desktop, slide-out drawer on mobile) with eight section routes. */
 :root {
   --bg: #f4f5f7;
   --panel: #ffffff;
@@ -16,9 +16,10 @@
   --muted: #5d6573;
   --accent: #d9481c;
   --accent-fg: #ffffff;
-  --ok: #1d7a4a;
+  --accent-soft: #fbe9e2;
   --bad: #b42318;
   --code-bg: #eceef2;
+  --scrim: rgba(10, 12, 16, .5);
   --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   color-scheme: light;
@@ -26,13 +27,15 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1216; --panel: #171b21; --line: #2a303a; --fg: #e8eaee; --muted: #98a1b0;
-    --accent: #ff6a3d; --accent-fg: #1a0b05; --ok: #52c58a; --bad: #ff8a7a; --code-bg: #1f252d;
+    --accent: #ff6a3d; --accent-fg: #1a0b05; --accent-soft: #2c1a13; --bad: #ff8a7a; --code-bg: #1f252d;
+    --scrim: rgba(0, 0, 0, .65);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1216; --panel: #171b21; --line: #2a303a; --fg: #e8eaee; --muted: #98a1b0;
-  --accent: #ff6a3d; --accent-fg: #1a0b05; --ok: #52c58a; --bad: #ff8a7a; --code-bg: #1f252d;
+  --accent: #ff6a3d; --accent-fg: #1a0b05; --accent-soft: #2c1a13; --bad: #ff8a7a; --code-bg: #1f252d;
+  --scrim: rgba(0, 0, 0, .65);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -46,8 +49,9 @@ a { color: inherit; }
 
 .app { display: flex; flex-direction: column; height: 100%; }
 .top {
-  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-  background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0;
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel); border-bottom: 1px solid var(--line);
 }
 .brand { font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; text-decoration: none; flex: none; }
 .brand svg { color: var(--accent); }
@@ -58,6 +62,7 @@ a { color: inherit; }
 .spacer { flex: 1; }
 .me { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex: none; }
 .me img { width: 22px; height: 22px; border-radius: 50%; }
+.btn.menu-btn { display: none; padding: 5px 8px; }
 
 .btn {
   border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
@@ -67,8 +72,6 @@ a { color: inherit; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.dark { background: var(--fg); border-color: var(--fg); color: var(--bg); }
-.btn.danger { color: var(--bad); }
-.btn.danger.armed { background: var(--bad); border-color: var(--bad); color: var(--panel); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.small { padding: 3px 9px; font-size: 12px; }
 .btn.wide { width: 100%; padding: 9px 12px; }
@@ -77,8 +80,8 @@ a { color: inherit; }
 .page { flex: 1; overflow: auto; padding-block: 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .col { max-width: 720px; margin: 0 auto; }
 .col.narrow { max-width: 440px; margin-top: 4vh; }
-.page h1 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 4px; text-wrap: balance; }
-.page .lede { color: var(--muted); margin: 0 0 22px; }
+.page h1, .dash-main h1 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 4px; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0 0 22px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -93,7 +96,7 @@ a { color: inherit; }
 .scopes { font-family: var(--mono); font-size: 12px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
 
 /* Lists of links */
-.links { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.links { display: flex; flex-direction: column; gap: 8px; }
 .link {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-decoration: none; min-width: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -107,87 +110,85 @@ a { color: inherit; }
 .link .chev { color: var(--muted); flex: none; }
 .badge { font-size: 11px; font-weight: 500; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); margin-left: 6px; vertical-align: 1px; }
 .section-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 22px 0 8px; }
-.section-label:first-of-type { margin-top: 0; }
+.section-label:first-child { margin-top: 0; }
 .tools { display: flex; gap: 8px; margin-bottom: 14px; }
 .tools input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--panel); }
 .state { color: var(--muted); padding: 28px 8px; text-align: center; }
 .state.bad { color: var(--bad); }
 
-/* Dashboard workbench */
-.work { flex: 1; display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 0; }
-.side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.side-head { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
-.side-head .r { display: flex; gap: 8px; }
-.side-head input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; background: var(--bg); }
-.tree { overflow: auto; flex: 1; padding: 6px; }
-.item {
-  display: flex; flex-direction: column; width: 100%; text-align: left; border: 0; background: none;
-  padding: 6px 10px; border-radius: 6px; min-width: 0;
+/* Dashboard shell */
+.dash { flex: 1; display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 0; position: relative; }
+.nav {
+  background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow: auto;
 }
-.item:hover { background: var(--bg); }
-.item.active { background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); }
-.item .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item .dir { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.empty { color: var(--muted); padding: 16px; text-align: center; }
-
-.editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.ed-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-.path { font-family: var(--mono); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
-.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-left: auto; }
-.tabs button { border: 0; background: none; padding: 4px 12px; font-size: 13px; }
-.tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); }
-.ed-body { flex: 1; overflow: auto; padding: 16px; min-height: 0; display: flex; flex-direction: column; }
-.ed-inner { max-width: 820px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; flex: 1; }
-.fm-label, .body-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-textarea.code {
-  width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
-  padding: 12px; font-family: var(--mono); font-size: 13px; line-height: 1.6; resize: vertical;
+.nav-head { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); min-width: 0; }
+.nav-head .owner { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-head .name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-list { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.nav-list a {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; text-decoration: none; color: var(--muted); font-weight: 500;
 }
-#fm { min-height: 110px; }
-#body { flex: 1; min-height: 320px; }
-.placeholder { margin: auto; text-align: center; color: var(--muted); max-width: 320px; }
-.placeholder strong { color: var(--fg); display: block; font-size: 16px; margin-bottom: 4px; }
+.nav-list a svg { flex: none; }
+.nav-list a:hover { background: var(--bg); color: var(--fg); }
+.nav-list a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.nav-sep { height: 1px; background: var(--line); margin: 6px 8px; }
+.nav-foot { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.nav-foot a { color: var(--muted); }
+.scrim { display: none; }
 
-.commit { display: flex; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); align-items: center; flex-wrap: wrap; }
-.commit input { flex: 1; min-width: 180px; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--bg); }
-
-/* Preview typography */
-.preview { max-width: 720px; margin: 0 auto; font-size: 16px; line-height: 1.7; }
-.preview h1, .preview h2, .preview h3, .preview h4 { letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; margin: 1.6em 0 .5em; }
-.preview h1 { font-size: 30px; margin-top: 0; }
-.preview h2 { font-size: 23px; }
-.preview h3 { font-size: 18px; }
-.preview p, .preview ul, .preview ol, .preview blockquote, .preview pre { margin: 0 0 1em; }
-.preview a { color: var(--accent); }
-.preview code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
-.preview pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
-.preview pre code { background: none; padding: 0; }
-.preview blockquote { border-left: 3px solid var(--line); padding-left: 14px; color: var(--muted); }
-.preview img { max-width: 100%; border-radius: 6px; }
-.preview hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
-.fm-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 20px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; color: var(--muted); }
+.dash-main { overflow: auto; min-width: 0; padding-block: 28px; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.dash-inner { max-width: 960px; margin: 0 auto; }
+.route-tag { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; overflow-wrap: anywhere; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; text-decoration: none; display: flex; gap: 12px; min-width: 0; }
+.tile:hover { border-color: var(--accent); }
+.tile svg { color: var(--accent); flex: none; margin-top: 2px; }
+.tile .t { font-weight: 600; }
+.tile .d { color: var(--muted); font-size: 13px; }
+.todo { background: var(--panel); border: 1px dashed var(--line); border-radius: 10px; padding: 24px; color: var(--muted); max-width: 640px; }
+.todo strong { color: var(--fg); display: block; margin-bottom: 4px; }
 
 .toast {
   position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
-  padding: 9px 16px; border-radius: 8px; font-weight: 500; max-width: calc(100% - 32px); z-index: 20;
+  padding: 9px 16px; border-radius: 8px; font-weight: 500; max-width: calc(100% - 32px); z-index: 40;
 }
 .toast.bad { background: var(--bad); color: var(--panel); }
 
-@media (max-width: 760px) {
-  .work { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 34%) minmax(0, 1fr); }
-  .side { border-right: 0; border-bottom: 1px solid var(--line); }
+@media (max-width: 860px) {
+  .dash { grid-template-columns: minmax(0, 1fr); }
+  .btn.menu-btn { display: inline-flex; }
+  .nav {
+    position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; width: min(290px, 84vw);
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px);
+    transform: translateX(-100%); visibility: hidden;
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  .dash.open .nav { transform: translateX(0); visibility: visible; box-shadow: 8px 0 30px rgba(0, 0, 0, .25); }
+  .scrim { position: fixed; inset: 0; z-index: 25; background: var(--scrim); opacity: 0; pointer-events: none; display: block; }
+  .dash.open .scrim { opacity: 1; pointer-events: auto; }
   .me span { display: none; }
   .link .meta { display: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .btn, .item, .link { transition: background .12s, border-color .12s; }
+  .btn, .link, .tile, .nav-list a { transition: background .12s, border-color .12s, color .12s; }
+  @media (max-width: 860px) {
+    .nav { transition: transform .22s ease, visibility 0s linear .22s, box-shadow .22s; }
+    .dash.open .nav { transition: transform .22s ease, visibility 0s, box-shadow .22s; }
+    .scrim { transition: opacity .22s; }
+  }
 }
 </style>
 </head>
 <body>
 <div class="app">
   <header class="top">
+    <button class="btn menu-btn" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="nav" hidden>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12"/></svg>
+    </button>
     <a class="brand" href="#/accounts">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="4.5" r="2"/><circle cx="5" cy="15.5" r="2"/><circle cx="15" cy="8" r="2"/><path d="M5 6.5v7M15 10c0 3-4 2.5-9 4.5"/></svg>
       Gitpress
@@ -203,7 +204,7 @@ textarea.code {
   <main id="homeView" class="page" hidden>
     <div class="col narrow">
       <h1>Sign in to Gitpress</h1>
-      <p class="lede">Edit the content of your GitHub repositories and save each change as a commit.</p>
+      <p class="lede">Manage the content of your GitHub repositories and save every change as a commit.</p>
       <div class="card">
         <a class="btn dark wide" id="ghBtn" target="_blank" rel="noopener noreferrer"
            href="https://github.com/settings/tokens/new?scopes=repo,read:org&amp;description=Gitpress">
@@ -248,45 +249,17 @@ textarea.code {
   </main>
 
   <!-- 4. Dashboard -->
-  <div id="dashView" class="work" hidden>
-    <aside class="side">
-      <div class="side-head">
-        <div class="r">
-          <input id="dirIn" type="text" placeholder="Content folder (blank = whole repo)" aria-label="Content folder" spellcheck="false">
-        </div>
-        <div class="r">
-          <input id="filterIn" type="text" placeholder="Filter files" aria-label="Filter files">
-          <button class="btn small" id="newBtn" type="button">New</button>
-        </div>
+  <div id="dashView" class="dash" hidden>
+    <aside class="nav" id="nav" aria-label="Repository navigation">
+      <div class="nav-head">
+        <div class="owner" id="navOwner"></div>
+        <div class="name" id="navRepo"></div>
       </div>
-      <div class="tree" id="tree"></div>
+      <nav class="nav-list" id="navList"></nav>
+      <div class="nav-foot"><a id="ghLink" target="_blank" rel="noopener noreferrer">View on GitHub</a></div>
     </aside>
-    <section class="editor">
-      <div class="ed-head" id="edHead" hidden>
-        <span class="dot" id="dirtyDot" hidden title="Unsaved changes"></span>
-        <span class="path" id="pathLabel"></span>
-        <div class="tabs" role="tablist">
-          <button type="button" role="tab" id="tabWrite" aria-selected="true">Write</button>
-          <button type="button" role="tab" id="tabPreview" aria-selected="false">Preview</button>
-        </div>
-      </div>
-      <div class="ed-body" id="edBody">
-        <div class="placeholder" id="placeholder"><strong>Pick a file</strong>Choose a file on the left, or create a new one.</div>
-        <div class="ed-inner" id="writePane" hidden>
-          <div class="fm-label">Front matter</div>
-          <textarea class="code" id="fm" spellcheck="false" aria-label="Front matter"></textarea>
-          <div class="body-label">Body</div>
-          <textarea class="code" id="body" spellcheck="true" aria-label="Body"></textarea>
-        </div>
-        <div class="preview" id="previewPane" hidden></div>
-      </div>
-      <div class="commit" id="commitBar" hidden>
-        <input id="msgIn" type="text" placeholder="Commit message" aria-label="Commit message">
-        <button class="btn danger" id="delBtn" type="button">Delete</button>
-        <button class="btn" id="revertBtn" type="button">Discard changes</button>
-        <button class="btn primary" id="saveBtn" type="button">Commit</button>
-      </div>
-    </section>
+    <div class="scrim" id="scrim"></div>
+    <main class="dash-main" id="dashMain" tabindex="-1"><div class="dash-inner" id="dashBody"></div></main>
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
@@ -295,13 +268,32 @@ textarea.code {
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
-  var EXT = /\.(md|mdx|markdown|txt|json|ya?ml|html)$/i;
   var VIEWS = ["homeView", "accountsView", "reposView", "dashView"];
-  var state = {
-    token: null, me: null, orgs: null, cfg: null, files: [], cur: null, orig: null,
-    pendingOpen: null, delArmed: false, repoCache: {}, routeSeq: 0
-  };
-  var toastTimer, lastHash = "", guardSkip = false;
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  /* Dashboard sections. Each key is the last segment of #/r/<owner>/<repo>/<key>. */
+  var SECTIONS = [
+    { key: "", label: "Dashboard", icon: "M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-5h-5v5H4a1 1 0 0 1-1-1z",
+      desc: "Overview of the repository." },
+    { key: "build", label: "Build", icon: "M3 4h14v12H3zM3 8h14M7 8v8",
+      desc: "The visual website editor." },
+    { key: "pages", label: "Pages", icon: "M5 2.5h7l3.5 3.5v11.5H5zM12 2.5V6h3.5",
+      desc: "Create and edit the pages of the managed application." },
+    { key: "posts", label: "Posts", icon: "M4 4h12M4 8h12M4 12h8M4 16h6",
+      desc: "Create and edit the articles of the managed application." },
+    { key: "media", label: "Media", icon: "M3 4.5h14v11H3zM3 13l4-4 3 3 2-2 5 5M13.5 8.2h.01",
+      desc: "Add media records to the git-native flat-file database." },
+    { key: "merch", label: "Merch", icon: "M6 3 3 6l2 2 1-.7V17h8V7.3l1 .7 2-2-3-3-2 1.5a2 2 0 0 1-4 0z",
+      desc: "Add merch records to the git-native flat-file database." },
+    { key: "files", label: "Files", icon: "M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 13v3h12v-3",
+      desc: "Upload files to a folder in the repository." },
+    { key: "config", label: "Config", icon: "M10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10 2v2.2M10 15.8V18M2 10h2.2M15.8 10H18M4.3 4.3l1.6 1.6M14.1 14.1l1.6 1.6M4.3 15.7l1.6-1.6M14.1 5.9l1.6-1.6",
+      desc: "Modify the application's configuration files." }
+  ];
+  function sectionByKey(k) { for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].key === k) return SECTIONS[i]; return null; }
+
+  var state = { token: null, me: null, orgs: null, repo: null, repoCache: {}, routeSeq: 0 };
+  var toastTimer;
 
   /* ---------- helpers ---------- */
   function safeGet(s, k) { try { return s.getItem(k); } catch (e) { return null; } }
@@ -313,25 +305,20 @@ textarea.code {
     if (text != null) n.textContent = text;
     return n;
   }
+  function icon(d, size) {
+    var s = document.createElementNS(SVGNS, "svg");
+    s.setAttribute("width", size || 18); s.setAttribute("height", size || 18); s.setAttribute("viewBox", "0 0 20 20");
+    s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "1.6");
+    s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round"); s.setAttribute("aria-hidden", "true");
+    var p = document.createElementNS(SVGNS, "path"); p.setAttribute("d", d); s.appendChild(p);
+    return s;
+  }
   function toast(msg, bad) {
     var t = $("toast");
     t.textContent = msg; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.hidden = true; }, bad ? 6000 : 2600);
   }
-  function enc(path) { return path.split("/").map(encodeURIComponent).join("/"); }
-  function b64decode(b64) {
-    var bin = atob(b64.replace(/\n/g, ""));
-    var bytes = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
-  }
-  function b64encode(str) {
-    var bytes = new TextEncoder().encode(str), bin = "";
-    for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    return btoa(bin);
-  }
-  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function ago(iso) {
     if (!iso) return "";
     var d = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -350,8 +337,7 @@ textarea.code {
       "X-GitHub-Api-Version": "2022-11-28"
     };
     if (opts.body) headers["Content-Type"] = "application/json";
-    return fetch(path.indexOf("http") === 0 ? path : "https://api.github.com" + path,
-      { method: opts.method || "GET", headers: headers, body: opts.body })
+    return fetch("https://api.github.com" + path, { method: opts.method || "GET", headers: headers, body: opts.body })
       .then(function (r) {
         if (r.ok) return r.status === 204 ? null : r.json();
         return r.json().catch(function () { return {}; }).then(function (j) {
@@ -370,7 +356,6 @@ textarea.code {
     }
     return page(1);
   }
-  function repoPath() { return "/repos/" + state.cfg.owner + "/" + state.cfg.repo; }
 
   /* ---------- auth ---------- */
   function signIn(token, remember) {
@@ -387,15 +372,11 @@ textarea.code {
       $("signOutBtn").hidden = false;
     });
   }
-  function signOut() {
+  $("signOutBtn").addEventListener("click", function () {
     safeDel(localStorage, "gitpress-key"); safeDel(sessionStorage, "gitpress-key");
-    state.token = null; state.me = null; state.orgs = null; state.repoCache = {}; state.cur = null;
+    state.token = null; state.me = null; state.orgs = null; state.repo = null; state.repoCache = {};
     $("tokenIn").value = ""; $("me").hidden = true; $("signOutBtn").hidden = true;
     go("#/");
-  }
-  $("signOutBtn").addEventListener("click", function () {
-    if (isDirty()) { toast("Commit or discard your changes before signing out.", true); return; }
-    signOut();
   });
 
   $("keyForm").addEventListener("submit", function (e) {
@@ -414,7 +395,11 @@ textarea.code {
 
   /* ---------- router ---------- */
   function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
-  function showView(id) { VIEWS.forEach(function (v) { $(v).hidden = v !== id; }); }
+  function showView(id) {
+    VIEWS.forEach(function (v) { $(v).hidden = v !== id; });
+    $("menuBtn").hidden = id !== "dashView";
+    if (id !== "dashView") closeNav();
+  }
   function setCrumbs(items) {
     var box = $("crumbs"); box.innerHTML = "";
     items.forEach(function (c, i) {
@@ -427,30 +412,16 @@ textarea.code {
     return location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   }
 
-  window.addEventListener("hashchange", function () {
-    if (guardSkip) { guardSkip = false; return; }
-    if (isDirty() && !$("dashView").hidden) {
-      guardSkip = true; location.hash = lastHash;
-      toast("You have uncommitted changes. Commit or discard them first.", true);
-      return;
-    }
-    render();
-  });
+  window.addEventListener("hashchange", render);
 
   function render() {
-    lastHash = location.hash;
     var seq = ++state.routeSeq, p = parts();
-    if (!state.token) { renderHome(); return; }
-    if (!p.length || p[0] === "") { go("#/accounts"); return; }
+    if (!state.token) { showView("homeView"); setCrumbs([]); return; }
+    if (!p.length) { go("#/accounts"); return; }
     if (p[0] === "accounts") return renderAccounts();
     if (p[0] === "o" && p[1]) return renderRepos(p[1], seq);
-    if (p[0] === "r" && p[1] && p[2]) return renderDash(p[1], p[2], seq);
+    if (p[0] === "r" && p[1] && p[2]) return renderDash(p[1], p[2], p[3] || "", seq);
     go("#/accounts");
-  }
-
-  function renderHome() {
-    showView("homeView"); setCrumbs([]);
-    if (location.hash && location.hash !== "#/") { lastHash = "#/"; }
   }
 
   /* --- accounts --- */
@@ -500,8 +471,7 @@ textarea.code {
     }).catch(function (e) {
       if (seq !== state.routeSeq) return;
       body.innerHTML = "";
-      var d = el("div", "state bad", e.status === 404 ? "Could not find repositories for " + login + ". The token may not have access to this organization." : "Could not load repositories: " + e.message);
-      body.appendChild(d);
+      body.appendChild(el("div", "state bad", e.status === 404 ? "Could not find repositories for " + login + ". The token may not have access to this organization." : "Could not load repositories: " + e.message));
     });
   }
   function drawRepos() {
@@ -528,258 +498,99 @@ textarea.code {
   }
   $("repoFilter").addEventListener("input", drawRepos);
 
-  /* --- dashboard --- */
-  function renderDash(owner, repo, seq) {
+  /* --- dashboard shell --- */
+  function base(owner, repo) { return "#/r/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo); }
+
+  function renderDash(owner, repo, key, seq) {
+    var sec = sectionByKey(key) || SECTIONS[0];
     showView("dashView");
-    setCrumbs([
+    closeNav();
+    var crumbs = [
       { label: "Accounts", href: "#/accounts" },
       { label: owner, href: "#/o/" + encodeURIComponent(owner) },
-      { label: repo }
-    ]);
-    if (state.cfg && state.cfg.owner === owner && state.cfg.repo === repo && state.files.length) return;
-    resetEditor();
-    state.cfg = { owner: owner, repo: repo, branch: null, dir: "" };
-    $("dirIn").value = "";
-    $("tree").innerHTML = ""; $("tree").appendChild(el("div", "empty", "Loading files..."));
+      sec.key ? { label: repo, href: base(owner, repo) } : { label: repo }
+    ];
+    if (sec.key) crumbs.push({ label: sec.label });
+    setCrumbs(crumbs);
+    buildNav(owner, repo, sec.key);
+
+    var cur = state.repo;
+    if (cur && cur.owner.login.toLowerCase() === owner.toLowerCase() && cur.name.toLowerCase() === repo.toLowerCase()) {
+      drawSection(sec, cur, owner, repo); return;
+    }
+    state.repo = null;
+    $("dashBody").innerHTML = ""; $("dashBody").appendChild(el("div", "state", "Opening repository..."));
     gh("/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo)).then(function (r) {
       if (seq !== state.routeSeq) return;
-      if (r.permissions && !r.permissions.push) toast("You can read this repository but not push to it.", true);
-      state.cfg.branch = r.default_branch;
-      return loadTree();
+      state.repo = r; $("ghLink").href = r.html_url;
+      drawSection(sec, r, owner, repo);
     }).catch(function (e) {
       if (seq !== state.routeSeq) return;
-      state.cfg = null; $("tree").innerHTML = "";
-      $("tree").appendChild(el("div", "empty", "Could not open repository: " + e.message));
+      $("dashBody").innerHTML = "";
+      $("dashBody").appendChild(el("div", "state bad", e.status === 404
+        ? "This repository was not found, or the token cannot see it."
+        : "Could not open repository: " + e.message));
     });
   }
-  function resetEditor() {
-    state.cur = null; state.orig = null; state.files = [];
-    $("edHead").hidden = true; $("commitBar").hidden = true; $("writePane").hidden = true;
-    $("previewPane").hidden = true; $("placeholder").hidden = false;
-  }
-  function loadTree() {
-    var cfg = state.cfg;
-    return gh(repoPath() + "/git/trees/" + encodeURIComponent(cfg.branch) + "?recursive=1").then(function (t) {
-      var prefix = cfg.dir ? cfg.dir.replace(/^\/|\/$/g, "") + "/" : "";
-      state.files = (t.tree || []).filter(function (n) {
-        return n.type === "blob" && n.path.indexOf(prefix) === 0 && EXT.test(n.path);
-      }).map(function (n) { return n.path; }).sort();
-      if (t.truncated) toast("Repository is large; the file list may be incomplete.", true);
-      renderTree();
+
+  function buildNav(owner, repo, activeKey) {
+    $("navOwner").textContent = owner; $("navRepo").textContent = repo;
+    var list = $("navList"); list.innerHTML = "";
+    SECTIONS.forEach(function (s, i) {
+      if (i === 1 || i === 6) list.appendChild(el("div", "nav-sep"));
+      var a = el("a"); a.href = base(owner, repo) + (s.key ? "/" + s.key : "");
+      a.appendChild(icon(s.icon)); a.appendChild(el("span", null, s.label));
+      if (s.key === activeKey) a.setAttribute("aria-current", "page");
+      list.appendChild(a);
     });
+    if (state.repo) $("ghLink").href = state.repo.html_url; else $("ghLink").removeAttribute("href");
   }
-  $("dirIn").addEventListener("keydown", function (e) {
-    if (e.key !== "Enter" || !state.cfg) return;
-    if (isDirty()) { toast("Commit or discard your changes first.", true); return; }
-    state.cfg.dir = $("dirIn").value.trim();
-    loadTree().catch(function (ex) { toast(ex.message, true); });
-  });
 
-  /* ---------- file tree ---------- */
-  function renderTree() {
-    var q = $("filterIn").value.trim().toLowerCase();
-    var box = $("tree"); box.innerHTML = "";
-    var list = state.files.filter(function (p) { return !q || p.toLowerCase().indexOf(q) !== -1; });
-    if (!list.length) {
-      box.appendChild(el("div", "empty", state.files.length ? "No files match." : "No content files found here yet. Press Enter in the folder box to change folders."));
-      return;
-    }
-    list.forEach(function (p) {
-      var b = el("button", "item" + (state.cur && state.cur.path === p ? " active" : ""));
-      b.type = "button";
-      var i = p.lastIndexOf("/");
-      b.appendChild(el("span", "name", p.slice(i + 1)));
-      b.appendChild(el("span", "dir", i > 0 ? p.slice(0, i) : "/"));
-      b.addEventListener("click", function () { openFile(p); });
-      box.appendChild(b);
+  function drawSection(sec, r, owner, repo) {
+    var box = $("dashBody"); box.innerHTML = "";
+    $("dashMain").scrollTop = 0;
+    if (!sec.key) return drawHome(box, r, owner, repo);
+    box.appendChild(el("h1", null, sec.label));
+    box.appendChild(el("p", "lede", sec.desc));
+    box.appendChild(el("p", "route-tag", base(owner, repo) + "/" + sec.key));
+    var t = el("div", "todo");
+    t.appendChild(el("strong", null, "Route ready"));
+    t.appendChild(document.createTextNode("This page has no logic yet. Its behavior and the way it reads and writes the repository get defined next."));
+    box.appendChild(t);
+  }
+
+  function drawHome(box, r, owner, repo) {
+    box.appendChild(el("h1", null, r.name));
+    box.appendChild(el("p", "lede", r.description || "No description set on GitHub."));
+    var stats = el("div", "stats");
+    [["Visibility", r.private ? "Private" : "Public"], ["Default branch", r.default_branch],
+     ["Last push", ago(r.pushed_at) || "Never"], ["Your access", r.permissions && r.permissions.push ? "Can push" : "Read only"]
+    ].forEach(function (s) {
+      var c = el("div", "stat"); c.appendChild(el("div", "k", s[0])); c.appendChild(el("div", "v", s[1])); stats.appendChild(c);
     });
-  }
-  $("filterIn").addEventListener("input", renderTree);
-
-  /* ---------- front matter ---------- */
-  function split(text) {
-    var m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
-    return m ? { fm: m[1], body: m[2] } : { fm: "", body: text };
-  }
-  function join(fm, body) {
-    fm = fm.replace(/\s+$/, "");
-    return fm ? "---\n" + fm + "\n---\n\n" + body.replace(/^\n+/, "") : body;
-  }
-
-  /* ---------- editor ---------- */
-  function currentText() { return join($("fm").value, $("body").value); }
-  function isDirty() {
-    if (!state.cur) return false;
-    return state.cur.isNew || currentText() !== state.orig;
-  }
-  function refreshDirty() { $("dirtyDot").hidden = !isDirty(); }
-
-  function show(path, text, sha, isNew) {
-    var s = split(text);
-    state.cur = { path: path, sha: sha, isNew: !!isNew };
-    state.orig = isNew ? "" : text;
-    $("fm").value = s.fm; $("body").value = s.body;
-    $("pathLabel").textContent = path;
-    $("edHead").hidden = false; $("commitBar").hidden = false; $("placeholder").hidden = true;
-    $("delBtn").hidden = !!isNew;
-    $("msgIn").value = "";
-    $("msgIn").placeholder = (isNew ? "Add " : "Update ") + path.split("/").pop();
-    setTab("write");
-    state.pendingOpen = null; disarm();
-    refreshDirty(); renderTree();
+    box.appendChild(stats);
+    box.appendChild(el("div", "section-label", "Sections"));
+    var tiles = el("div", "tiles");
+    SECTIONS.forEach(function (s) {
+      if (!s.key) return;
+      var a = el("a", "tile"); a.href = base(owner, repo) + "/" + s.key;
+      a.appendChild(icon(s.icon, 20));
+      var m = el("div"); m.appendChild(el("div", "t", s.label)); m.appendChild(el("div", "d", s.desc)); a.appendChild(m);
+      tiles.appendChild(a);
+    });
+    box.appendChild(tiles);
   }
 
-  function openFile(path) {
-    if (isDirty() && state.pendingOpen !== path) {
-      state.pendingOpen = path;
-      toast("Unsaved changes. Click the file again to discard them.", true);
-      return;
-    }
-    state.pendingOpen = null;
-    gh(repoPath() + "/contents/" + enc(path) + "?ref=" + encodeURIComponent(state.cfg.branch))
-      .then(function (f) { show(path, b64decode(f.content), f.sha, false); })
-      .catch(function (e) { toast("Could not open file: " + e.message, true); });
-  }
-
-  $("newBtn").addEventListener("click", function () {
-    if (!state.cfg) return;
-    if (isDirty() && state.pendingOpen !== "__new") {
-      state.pendingOpen = "__new";
-      toast("Unsaved changes. Click New again to discard them.", true); return;
-    }
-    var dir = state.cfg.dir ? state.cfg.dir.replace(/^\/|\/$/g, "") + "/" : "";
-    var stamp = new Date().toISOString().slice(0, 10);
-    var path = dir + "untitled-" + stamp + ".md";
-    var n = 2; while (state.files.indexOf(path) !== -1) { path = dir + "untitled-" + stamp + "-" + n++ + ".md"; }
-    show(path, "---\ntitle: Untitled\ndate: " + stamp + "\ndraft: true\n---\n\nStart writing here.\n", null, true);
-    $("pathLabel").contentEditable = "true"; $("pathLabel").focus();
-    document.getSelection().selectAllChildren($("pathLabel"));
+  /* ---------- mobile drawer ---------- */
+  function openNav() { $("dashView").classList.add("open"); $("menuBtn").setAttribute("aria-expanded", "true"); }
+  function closeNav() { $("dashView").classList.remove("open"); $("menuBtn").setAttribute("aria-expanded", "false"); }
+  $("menuBtn").addEventListener("click", function () {
+    if ($("dashView").classList.contains("open")) closeNav(); else openNav();
   });
-  $("pathLabel").addEventListener("blur", function () {
-    $("pathLabel").contentEditable = "false";
-    if (state.cur && state.cur.isNew) {
-      var p = $("pathLabel").textContent.trim().replace(/^\/+/, "");
-      if (p) { state.cur.path = p; $("msgIn").placeholder = "Add " + p.split("/").pop(); }
-      $("pathLabel").textContent = state.cur.path;
-    }
-  });
-  $("pathLabel").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("pathLabel").blur(); } });
-
-  $("fm").addEventListener("input", refreshDirty);
-  $("body").addEventListener("input", refreshDirty);
-
-  function setTab(which) {
-    var w = which === "write";
-    $("tabWrite").setAttribute("aria-selected", w); $("tabPreview").setAttribute("aria-selected", !w);
-    $("writePane").hidden = !w; $("previewPane").hidden = w;
-    if (!w) {
-      $("previewPane").innerHTML = ($("fm").value.trim() ? '<div class="fm-card">' + esc($("fm").value) + "</div>" : "") + md($("body").value);
-    }
-  }
-  $("tabWrite").addEventListener("click", function () { if (state.cur) setTab("write"); });
-  $("tabPreview").addEventListener("click", function () { if (state.cur) setTab("preview"); });
-
-  /* ---------- commit / delete ---------- */
-  function commit() {
-    var c = state.cur; if (!c) return;
-    if (!c.isNew && !isDirty()) { toast("Nothing to commit."); return; }
-    var text = currentText();
-    var msg = $("msgIn").value.trim() || $("msgIn").placeholder;
-    var body = { message: msg, content: b64encode(text), branch: state.cfg.branch };
-    if (c.sha) body.sha = c.sha;
-    $("saveBtn").disabled = true; $("saveBtn").textContent = "Committing...";
-    gh(repoPath() + "/contents/" + enc(c.path), { method: "PUT", body: JSON.stringify(body) })
-      .then(function (r) {
-        var wasNew = c.isNew;
-        c.sha = r.content.sha; c.isNew = false; state.orig = text;
-        if (wasNew && state.files.indexOf(c.path) === -1) { state.files.push(c.path); state.files.sort(); }
-        $("delBtn").hidden = false; $("msgIn").value = "";
-        $("msgIn").placeholder = "Update " + c.path.split("/").pop();
-        refreshDirty(); renderTree();
-        toast("Committed " + r.commit.sha.slice(0, 7));
-      })
-      .catch(function (e) {
-        toast(e.status === 409 || e.status === 422
-          ? "This file changed on GitHub since you opened it. Copy your text, reopen the file, and apply your edits."
-          : "Commit failed: " + e.message, true);
-      })
-      .then(function () { $("saveBtn").disabled = false; $("saveBtn").textContent = "Commit"; });
-  }
-  $("saveBtn").addEventListener("click", commit);
-  document.addEventListener("keydown", function (e) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (state.cur && !$("dashView").hidden) commit(); }
-  });
-
-  $("revertBtn").addEventListener("click", function () {
-    if (!state.cur) return;
-    if (state.cur.isNew) { state.cur = null; resetEditorPane(); renderTree(); return; }
-    var s = split(state.orig); $("fm").value = s.fm; $("body").value = s.body; refreshDirty();
-    if (!$("previewPane").hidden) setTab("preview");
-  });
-  function resetEditorPane() {
-    $("edHead").hidden = true; $("commitBar").hidden = true; $("writePane").hidden = true;
-    $("previewPane").hidden = true; $("placeholder").hidden = false;
-  }
-
-  function disarm() { state.delArmed = false; $("delBtn").classList.remove("armed"); $("delBtn").textContent = "Delete"; }
-  $("delBtn").addEventListener("click", function () {
-    var c = state.cur; if (!c || c.isNew) return;
-    if (!state.delArmed) { state.delArmed = true; $("delBtn").classList.add("armed"); $("delBtn").textContent = "Click again to delete"; setTimeout(disarm, 4000); return; }
-    disarm();
-    var body = { message: $("msgIn").value.trim() || "Delete " + c.path.split("/").pop(), sha: c.sha, branch: state.cfg.branch };
-    gh(repoPath() + "/contents/" + enc(c.path), { method: "DELETE", body: JSON.stringify(body) })
-      .then(function () {
-        state.files = state.files.filter(function (p) { return p !== c.path; });
-        state.cur = null; resetEditorPane();
-        renderTree(); toast("Deleted " + c.path);
-      })
-      .catch(function (e) { toast("Delete failed: " + e.message, true); });
-  });
-
-  window.addEventListener("beforeunload", function (e) { if (isDirty()) { e.preventDefault(); e.returnValue = ""; } });
-
-  /* ---------- tiny markdown renderer (for the preview) ---------- */
-  function inline(s) {
-    s = esc(s);
-    var codes = [];
-    s = s.replace(/`([^`]+)`/g, function (_, c) { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
-    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (_, alt, u) { return safeUrl(u) ? '<img alt="' + alt + '" src="' + u + '">' : alt; });
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, t, u) { return safeUrl(u) ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + t + "</a>" : t; });
-    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
-    return s.replace(/\u0000(\d+)\u0000/g, function (_, i) { return "<code>" + codes[+i] + "</code>"; });
-  }
-  function safeUrl(u) { return /^(https?:\/\/|\/|\.\/|\.\.\/|#|[\w-]+\/|[\w.-]+$)/i.test(u) && !/^\s*javascript:/i.test(u); }
-  function md(src) {
-    var lines = src.replace(/\r/g, "").split("\n"), out = [], i = 0;
-    function para(buf) { if (buf.length) out.push("<p>" + inline(buf.join(" ")) + "</p>"); }
-    var buf = [];
-    while (i < lines.length) {
-      var l = lines[i], m;
-      if (/^```/.test(l)) {
-        para(buf); buf = []; var code = []; i++;
-        while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
-        i++; out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); continue;
-      }
-      if ((m = /^(#{1,4})\s+(.*)$/.exec(l))) { para(buf); buf = []; out.push("<h" + m[1].length + ">" + inline(m[2]) + "</h" + m[1].length + ">"); i++; continue; }
-      if (/^(-{3,}|\*{3,})\s*$/.test(l)) { para(buf); buf = []; out.push("<hr>"); i++; continue; }
-      if (/^>\s?/.test(l)) {
-        para(buf); buf = []; var q = [];
-        while (i < lines.length && /^>\s?/.test(lines[i])) q.push(lines[i++].replace(/^>\s?/, ""));
-        out.push("<blockquote>" + inline(q.join(" ")) + "</blockquote>"); continue;
-      }
-      if (/^\s*([-*+]|\d+\.)\s+/.test(l)) {
-        para(buf); buf = [];
-        var ord = /^\s*\d+\./.test(l), items = [];
-        while (i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])) items.push("<li>" + inline(lines[i++].replace(/^\s*([-*+]|\d+\.)\s+/, "")) + "</li>");
-        out.push((ord ? "<ol>" : "<ul>") + items.join("") + (ord ? "</ol>" : "</ul>")); continue;
-      }
-      if (!l.trim()) { para(buf); buf = []; i++; continue; }
-      buf.push(l.trim()); i++;
-    }
-    para(buf);
-    return out.join("\n");
-  }
+  $("scrim").addEventListener("click", closeNav);
+  $("navList").addEventListener("click", function (e) { if (e.target.closest("a")) closeNav(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeNav(); });
+  window.matchMedia("(min-width: 861px)").addEventListener("change", closeNav);
 
   /* ---------- theme ---------- */
   $("themeBtn").addEventListener("click", function () {
