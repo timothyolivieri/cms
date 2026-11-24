@@ -158,6 +158,35 @@ a { color: inherit; }
 }
 .toast.bad { background: var(--bad); color: var(--panel); }
 
+/* Media page */
+.mbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.mbar input[type=text] { flex: 1; min-width: 160px; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--panel); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; padding: 6px 12px; font-weight: 500; text-transform: capitalize; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.mcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.thumb { position: relative; aspect-ratio: 4 / 3; background: var(--code-bg); }
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.thumb .kind { position: absolute; left: 8px; top: 8px; z-index: 1; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; background: var(--panel); color: var(--fg); border-radius: 4px; padding: 1px 6px; }
+.mbody { padding: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.mbody .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mbody .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mbody .tags { font-size: 12px; color: var(--accent); }
+.mbody .hint { overflow-wrap: anywhere; }
+.mact { display: flex; gap: 8px; margin-top: auto; padding-top: 8px; flex-wrap: wrap; }
+.tile .cnt { font-size: 12px; font-weight: 600; color: var(--accent); margin-top: 4px; min-height: 1.4em; }
+.mono { font-family: var(--mono); }
+.prow { justify-content: space-between; }
+.prow .main { flex: 1; }
+.mform.wide { max-width: 820px; }
+textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
+.mform { max-width: 620px; margin-bottom: 20px; }
+.mform h2 { font-size: 16px; margin: 0 0 14px; }
+.mform select, .mform textarea, .mform input[type=text] { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--bg); width: 100%; }
+.mform textarea { resize: vertical; }
+.mform input[type=file] { font-size: 13px; max-width: 100%; }
+
 @media (max-width: 860px) {
   .dash { grid-template-columns: minmax(0, 1fr); }
   .btn.menu-btn { display: inline-flex; }
@@ -365,7 +394,7 @@ a { color: inherit; }
       var store = remember ? localStorage : sessionStorage;
       safeDel(localStorage, "gitpress-key"); safeDel(sessionStorage, "gitpress-key");
       safeSet(store, "gitpress-key", token);
-      return gh("/user/orgs?per_page=100").catch(function () { return null; });
+      return ghAll("/user/orgs").catch(function () { return null; });
     }).then(function (orgs) {
       state.orgs = orgs;
       $("me").hidden = false; $("meImg").src = state.me.avatar_url; $("meName").textContent = state.me.login;
@@ -414,13 +443,26 @@ a { color: inherit; }
 
   window.addEventListener("hashchange", render);
 
+  /* Only the signed-in user and organizations they belong to are reachable. */
+  function isMyAccount(login) {
+    var l = String(login).toLowerCase();
+    if (state.me && state.me.login.toLowerCase() === l) return true;
+    return !!(state.orgs && state.orgs.some(function (o) { return o.login.toLowerCase() === l; }));
+  }
+
   function render() {
     var seq = ++state.routeSeq, p = parts();
     if (!state.token) { showView("homeView"); setCrumbs([]); return; }
     if (!p.length) { go("#/accounts"); return; }
     if (p[0] === "accounts") return renderAccounts();
-    if (p[0] === "o" && p[1]) return renderRepos(p[1], seq);
-    if (p[0] === "r" && p[1] && p[2]) return renderDash(p[1], p[2], p[3] || "", seq);
+    if ((p[0] === "o" && p[1]) || (p[0] === "r" && p[1] && p[2])) {
+      if (!isMyAccount(p[1])) {
+        toast(p[1] + " is not your account or an organization you belong to.", true);
+        go("#/accounts"); return;
+      }
+      if (p[0] === "o") return renderRepos(p[1], seq);
+      return renderDash(p[1], p[2], p[3] || "", seq);
+    }
     go("#/accounts");
   }
 
@@ -550,6 +592,8 @@ a { color: inherit; }
     var box = $("dashBody"); box.innerHTML = "";
     $("dashMain").scrollTop = 0;
     if (!sec.key) return drawHome(box, r, owner, repo);
+    if (sec.key === "media") return mediaPage(box, r);
+    if (sec.key === "pages") return pagesPage(box, r);
     box.appendChild(el("h1", null, sec.label));
     box.appendChild(el("p", "lede", sec.desc));
     box.appendChild(el("p", "route-tag", base(owner, repo) + "/" + sec.key));
@@ -569,16 +613,599 @@ a { color: inherit; }
       var c = el("div", "stat"); c.appendChild(el("div", "k", s[0])); c.appendChild(el("div", "v", s[1])); stats.appendChild(c);
     });
     box.appendChild(stats);
+    var notice = el("div"); box.appendChild(notice);
     box.appendChild(el("div", "section-label", "Sections"));
     var tiles = el("div", "tiles");
     SECTIONS.forEach(function (s) {
       if (!s.key) return;
       var a = el("a", "tile"); a.href = base(owner, repo) + "/" + s.key;
       a.appendChild(icon(s.icon, 20));
-      var m = el("div"); m.appendChild(el("div", "t", s.label)); m.appendChild(el("div", "d", s.desc)); a.appendChild(m);
+      var m = el("div"); m.appendChild(el("div", "t", s.label)); m.appendChild(el("div", "d", s.desc));
+      var cnt = el("div", "cnt"); cnt.setAttribute("data-count", s.key); m.appendChild(cnt); a.appendChild(m);
       tiles.appendChild(a);
     });
     box.appendChild(tiles);
+    homeExtras(r, notice, tiles, box);
+  }
+
+  /* ---------- encoding helpers ---------- */
+  function bytesToB64(bytes) {
+    var bin = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function b64ToBytes(b64) {
+    var bin = atob(b64.replace(/\n/g, "")), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function pool(items, n, fn) {
+    var res = new Array(items.length), i = 0;
+    function worker() {
+      if (i >= items.length) return Promise.resolve();
+      var k = i++;
+      return Promise.resolve(fn(items[k])).then(function (v) { res[k] = v; return worker(); });
+    }
+    var ws = [];
+    for (var w = 0; w < Math.min(n, items.length); w++) ws.push(worker());
+    return Promise.all(ws).then(function () { return res; });
+  }
+  function readBytes(file) {
+    return file.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function fmtSize(n) {
+    if (n == null) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  /* ---------- git data layer: many files, one commit ---------- */
+  var git = {
+    ctx: function () { var r = state.repo; return { o: r.owner.login, n: r.name, b: r.default_branch }; },
+    url: function (s) { var c = git.ctx(); return "/repos/" + encodeURIComponent(c.o) + "/" + encodeURIComponent(c.n) + s; },
+    refPath: function () { return "/git/refs/heads/" + git.ctx().b.split("/").map(encodeURIComponent).join("/"); },
+    head: function () {
+      return gh(git.url(git.refPath().replace("/git/refs/", "/git/ref/"))).then(function (r) { return r.object.sha; });
+    },
+    tree: function (sha) { return gh(git.url("/git/trees/" + encodeURIComponent(sha || git.ctx().b) + "?recursive=1")); },
+    blob: function (sha) { return gh(git.url("/git/blobs/" + sha)).then(function (b) { return b64ToBytes(b.content); }); },
+    /* Text of a file at a ref, or null when it does not exist. */
+    text: function (path, ref) {
+      var p = path.split("/").map(encodeURIComponent).join("/");
+      return gh(git.url("/contents/" + p + "?ref=" + encodeURIComponent(ref || git.ctx().b))).then(function (f) {
+        if (f.content) return new TextDecoder().decode(b64ToBytes(f.content));
+        return git.blob(f.sha).then(function (bytes) { return new TextDecoder().decode(bytes); });
+      }).catch(function (e) { if (e.status === 404) return null; throw e; });
+    },
+    /* changes: [{path, text} | {path, bytes} | {path, remove: true}]. Resolves with the new commit sha. */
+    commit: function (message, changes, head) {
+      var baseTree;
+      return gh(git.url("/git/commits/" + head)).then(function (cm) {
+        baseTree = cm.tree.sha;
+        return pool(changes, 3, function (ch) {
+          if (ch.remove) return { path: ch.path, mode: "100644", type: "blob", sha: null };
+          var b64 = bytesToB64(ch.bytes || new TextEncoder().encode(ch.text));
+          return gh(git.url("/git/blobs"), { method: "POST", body: JSON.stringify({ content: b64, encoding: "base64" }) })
+            .then(function (b) { return { path: ch.path, mode: "100644", type: "blob", sha: b.sha }; });
+        });
+      }).then(function (entries) {
+        return gh(git.url("/git/trees"), { method: "POST", body: JSON.stringify({ base_tree: baseTree, tree: entries }) });
+      }).then(function (t) {
+        return gh(git.url("/git/commits"), { method: "POST", body: JSON.stringify({ message: message, tree: t.sha, parents: [head] }) });
+      }).then(function (cm) {
+        return gh(git.url(git.refPath()), { method: "PATCH", body: JSON.stringify({ sha: cm.sha }) }).then(function () { return cm.sha; });
+      }).catch(function (e) {
+        if (e.status === 422 || e.status === 409) e.message = "The branch changed on GitHub while you were saving. Reload the page and try again. (" + e.message + ")";
+        throw e;
+      });
+    }
+  };
+
+  /* ---------- /media ---------- */
+  var MEDIA_FORMATS = ["audio", "photo", "video"];
+  var MEDIA_ACCEPT = { audio: "audio/*", photo: "image/*", video: "video/*" };
+  var MEDIA_EXT = { audio: "mp3", photo: "jpg", video: "mp4" };
+  var MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", avif: "image/avif", svg: "image/svg+xml" };
+  var MAX_UPLOAD = 50 * 1048576;
+  var thumbCache = {};
+
+  function slugify(s) {
+    return s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function extOf(name, fallback) {
+    var m = /\.([a-z0-9]+)$/i.exec(name || "");
+    return m ? m[1].toLowerCase() : fallback;
+  }
+  function toJSON(x) { return JSON.stringify(x, null, 4); }
+  function parseList(text, path) {
+    if (text == null || !text.trim()) return [];
+    var v;
+    try { v = JSON.parse(text); } catch (e) { throw new Error(path + " is not valid JSON."); }
+    if (!Array.isArray(v)) throw new Error(path + " is not a JSON array.");
+    return v;
+  }
+  function upsert(list, item, prepend) {
+    var i = -1;
+    for (var k = 0; k < list.length; k++) if (list[k].format === item.format && list[k].slug === item.slug) { i = k; break; }
+    if (i >= 0) list[i] = item; else if (prepend) list.unshift(item); else list.push(item);
+    return list;
+  }
+  function mediaBase(format) { return format === "photo" ? "image" : format; }
+
+  function mediaLoad(M) {
+    return Promise.all([git.tree(), git.text("raw/media/media.json")]).then(function (res) {
+      var files = {};
+      (res[0].tree || []).forEach(function (n) {
+        if (n.type !== "blob" || n.path.indexOf("raw/media/") !== 0) return;
+        var p = n.path.split("/");
+        if (p.length !== 5) return;
+        (files[p[2] + "/" + p[3]] = files[p[2] + "/" + p[3]] || []).push({ name: p[4], sha: n.sha, size: n.size });
+      });
+      M.records = parseList(res[1], "raw/media/media.json");
+      M.files = files;
+    });
+  }
+
+  /* One commit: record folder, per-format index, media.json, and any replaced files. */
+  function mediaSave(M, mode, d) {
+    var dir = "raw/media/" + d.format + "/" + d.slug + "/";
+    var fp = "raw/media/" + d.format + "/" + d.format + ".json", mp = "raw/media/media.json";
+    var head;
+    return git.head().then(function (h) {
+      head = h;
+      return Promise.all([git.text(mp, head), git.text(fp, head), d.main ? readBytes(d.main) : null, d.cover ? readBytes(d.cover) : null]);
+    }).then(function (res) {
+      var all = parseList(res[0], mp), list = parseList(res[1], fp);
+      var found = list.filter(function (r) { return r.slug === d.slug; })[0];
+      var inAll = all.some(function (r) { return r.format === d.format && r.slug === d.slug; });
+      if (mode === "add" && (found || inAll)) throw new Error("A " + d.format + " item with the slug \"" + d.slug + "\" already exists.");
+      var rec = { format: d.format, slug: d.slug, title: d.title, description: d.description, tags: d.tags };
+      var entry = { created: (found && found.created) || Math.floor(Date.now() / 1000), format: d.format, slug: d.slug, title: d.title, description: d.description, tags: d.tags };
+      var changes = [
+        { path: dir + d.format + ".json", text: toJSON(rec) },
+        { path: fp, text: toJSON(upsert(list, entry, !found)) },
+        { path: mp, text: toJSON(upsert(all, rec, !inAll)) }
+      ];
+      var existing = M.files[d.format + "/" + d.slug] || [];
+      function put(base, file, bytes) {
+        var name = base + "." + extOf(file.name, MEDIA_EXT[d.format]);
+        changes.push({ path: dir + name, bytes: bytes });
+        existing.forEach(function (f) {
+          if (f.name.indexOf(base + ".") === 0 && !/\.json$/i.test(f.name) && f.name !== name) changes.push({ path: dir + f.name, remove: true });
+        });
+      }
+      if (d.main) put(mediaBase(d.format), d.main, res[2]);
+      if (d.cover && d.format !== "photo") put("image", d.cover, res[3]);
+      var msg = (mode === "add" ? "Add " : "Update ") + d.format + " " + d.slug;
+      return git.commit(msg, changes, head);
+    });
+  }
+
+  function mediaDelete(rec) {
+    var dir = "raw/media/" + rec.format + "/" + rec.slug + "/";
+    var fp = "raw/media/" + rec.format + "/" + rec.format + ".json", mp = "raw/media/media.json";
+    var head;
+    return git.head().then(function (h) {
+      head = h;
+      return Promise.all([git.tree(head), git.text(mp, head), git.text(fp, head)]);
+    }).then(function (res) {
+      var keep = function (r) { return !(r.format === rec.format && r.slug === rec.slug); };
+      var changes = [
+        { path: mp, text: toJSON(parseList(res[1], mp).filter(keep)) },
+        { path: fp, text: toJSON(parseList(res[2], fp).filter(keep)) }
+      ];
+      (res[0].tree || []).forEach(function (n) { if (n.type === "blob" && n.path.indexOf(dir) === 0) changes.push({ path: n.path, remove: true }); });
+      return git.commit("Delete " + rec.format + " " + rec.slug, changes, head);
+    });
+  }
+
+  function mediaPage(box, r) {
+    var seq = state.routeSeq;
+    var canPush = !(r.permissions && !r.permissions.push);
+    var M = { records: [], files: {}, filter: "all", q: "" };
+    box.appendChild(el("h1", null, "Media"));
+    box.appendChild(el("p", "lede", "Audio, photo and video records in raw/media. Each change is saved as one commit to " + r.default_branch + "."));
+    var bar = el("div", "mbar"), formBox = el("div"), grid = el("div"), note = el("div");
+    box.appendChild(bar); box.appendChild(formBox); box.appendChild(grid); box.appendChild(note);
+    grid.appendChild(el("div", "state", "Loading media..."));
+
+    function alive() { return seq === state.routeSeq; }
+    function reload() {
+      return mediaLoad(M).then(function () { if (alive()) { drawBar(); drawGrid(); } });
+    }
+
+    function drawBar() {
+      bar.innerHTML = "";
+      var seg = el("div", "seg"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Format");
+      ["all"].concat(MEDIA_FORMATS).forEach(function (f) {
+        var n = f === "all" ? M.records.length : M.records.filter(function (x) { return x.format === f; }).length;
+        var b = el("button", null, (f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)) + " " + n);
+        b.type = "button"; b.setAttribute("aria-pressed", M.filter === f);
+        b.addEventListener("click", function () { M.filter = f; drawBar(); drawGrid(); });
+        seg.appendChild(b);
+      });
+      var q = el("input"); q.type = "text"; q.id = "mediaSearch"; q.placeholder = "Search title or tag"; q.value = M.q; q.setAttribute("aria-label", "Search media");
+      q.addEventListener("input", function () { M.q = q.value; drawGrid(); });
+      var add = el("button", "btn primary", "Add media"); add.type = "button"; add.disabled = !canPush;
+      add.addEventListener("click", function () { openForm("add", null); });
+      bar.appendChild(seg); bar.appendChild(q); bar.appendChild(add);
+    }
+
+    function visible() {
+      var q = M.q.trim().toLowerCase();
+      return M.records.filter(function (x) {
+        if (M.filter !== "all" && x.format !== M.filter) return false;
+        if (!q) return true;
+        return (x.title || "").toLowerCase().indexOf(q) !== -1 || (x.tags || []).join(" ").toLowerCase().indexOf(q) !== -1 || (x.slug || "").indexOf(q) !== -1;
+      });
+    }
+
+    function drawGrid() {
+      grid.innerHTML = ""; note.innerHTML = "";
+      if (!canPush) note.appendChild(el("p", "hint", "You have read-only access to this repository, so adding and editing are turned off."));
+      var list = visible();
+      if (!list.length) {
+        grid.appendChild(el("div", "state", M.records.length ? "No media matches." : "No media yet. Add your first audio, photo or video."));
+        return;
+      }
+      var g = el("div", "mgrid"), thumbs = [];
+      list.forEach(function (rec) {
+        var key = rec.format + "/" + rec.slug, files = M.files[key] || [];
+        var c = el("div", "mcard"), t = el("div", "thumb");
+        var img = files.filter(function (f) { return /^image\.(jpe?g|png|webp|gif|avif|svg)$/i.test(f.name); })[0];
+        t.appendChild(el("span", "kind", rec.format));
+        if (img) thumbs.push({ file: img, holder: t });
+        c.appendChild(t);
+        var b = el("div", "mbody");
+        b.appendChild(el("div", "title", rec.title || rec.slug));
+        b.appendChild(el("div", "sub", rec.slug));
+        if (rec.tags && rec.tags.length) b.appendChild(el("div", "tags", rec.tags.join(", ")));
+        b.appendChild(el("div", "hint", files.filter(function (f) { return !/\.json$/i.test(f.name); }).map(function (f) { return f.name + " " + fmtSize(f.size); }).join(" · ") || "No files found"));
+        var act = el("div", "mact");
+        var ed = el("button", "btn small", "Edit"); ed.type = "button"; ed.disabled = !canPush;
+        ed.addEventListener("click", function () { openForm("edit", rec); });
+        var del = el("button", "btn small danger", "Delete"); del.type = "button"; del.disabled = !canPush;
+        var armed = false;
+        del.addEventListener("click", function () {
+          if (!armed) { armed = true; del.textContent = "Click again to delete"; setTimeout(function () { armed = false; del.textContent = "Delete"; }, 4000); return; }
+          del.disabled = true; del.textContent = "Deleting...";
+          mediaDelete(rec).then(function (sha) { toast("Deleted " + rec.slug + " (" + sha.slice(0, 7) + ")"); return reload(); })
+            .catch(function (e) { toast("Delete failed: " + e.message, true); del.disabled = false; del.textContent = "Delete"; armed = false; });
+        });
+        act.appendChild(ed); act.appendChild(del); b.appendChild(act);
+        c.appendChild(b); g.appendChild(c);
+      });
+      grid.appendChild(g);
+      pool(thumbs, 3, function (x) {
+        var url = thumbCache[x.file.sha];
+        var p = url ? Promise.resolve(url) : git.blob(x.file.sha).then(function (bytes) {
+          var u = URL.createObjectURL(new Blob([bytes], { type: MIME[extOf(x.file.name, "jpg")] || "image/jpeg" }));
+          thumbCache[x.file.sha] = u; return u;
+        });
+        return p.then(function (u) {
+          if (!x.holder.isConnected) return;
+          var im = el("img"); im.alt = ""; im.src = u; x.holder.appendChild(im);
+        }).catch(function () {});
+      });
+    }
+
+    function openForm(mode, rec) {
+      formBox.innerHTML = "";
+      var edit = mode === "edit";
+      var f = el("form", "card mform"); f.setAttribute("autocomplete", "off");
+      f.appendChild(el("h2", null, edit ? "Edit " + rec.slug : "Add media"));
+      function field(label, id, node, hint) {
+        var w = el("div", "field"), l = el("label", null, label); l.setAttribute("for", id);
+        node.id = id; w.appendChild(l); w.appendChild(node);
+        if (hint) w.appendChild(el("span", "hint", hint));
+        f.appendChild(w); return node;
+      }
+      var fmt = el("select"); MEDIA_FORMATS.forEach(function (x) { var o = el("option", null, x); o.value = x; fmt.appendChild(o); });
+      fmt.value = edit ? rec.format : (M.filter !== "all" ? M.filter : "audio"); fmt.disabled = edit;
+      field("Format", "mfFormat", fmt);
+      var ti = el("input"); ti.type = "text"; ti.value = edit ? rec.title || "" : "";
+      field("Title", "mfTitle", ti);
+      var sl = el("input"); sl.type = "text"; sl.value = edit ? rec.slug : ""; sl.readOnly = edit; sl.spellcheck = false;
+      field("Slug", "mfSlug", sl, edit ? "The slug is the folder name and cannot change." : "Becomes the folder name. Filled in from the title.");
+      var slugTouched = false;
+      sl.addEventListener("input", function () { slugTouched = true; });
+      ti.addEventListener("input", function () { if (!edit && !slugTouched) sl.value = slugify(ti.value); });
+      var de = el("textarea"); de.rows = 4; de.value = edit ? rec.description || "" : "";
+      field("Description", "mfDesc", de);
+      var tg = el("input"); tg.type = "text"; tg.value = edit ? (rec.tags || []).join(", ") : "";
+      field("Tags", "mfTags", tg, "Separate with commas.");
+      var fi = el("input"); fi.type = "file";
+      var fiField = field("File", "mfFile", fi);
+      var ci = el("input"); ci.type = "file"; ci.accept = "image/*";
+      field("Cover image", "mfCover", ci, "Saved as image.<ext> next to the file.");
+      var coverW = ci.parentNode;
+      function syncFormat() {
+        fi.accept = MEDIA_ACCEPT[fmt.value];
+        fiField.parentNode.querySelector("label").textContent = edit ? "Replace file (optional)" : "File";
+        coverW.hidden = fmt.value === "photo";
+        coverW.querySelector("label").textContent = edit ? "Replace cover image (optional)" : "Cover image (optional)";
+      }
+      fmt.addEventListener("change", syncFormat); syncFormat();
+      var err = el("p", "err"); err.setAttribute("role", "alert"); f.appendChild(err);
+      var row = el("div", "mact");
+      var ok = el("button", "btn primary", edit ? "Commit changes" : "Commit upload"); ok.type = "submit";
+      var cancel = el("button", "btn", "Cancel"); cancel.type = "button";
+      cancel.addEventListener("click", function () { formBox.innerHTML = ""; });
+      row.appendChild(ok); row.appendChild(cancel); f.appendChild(row);
+
+      f.addEventListener("submit", function (e) {
+        e.preventDefault(); err.textContent = "";
+        var format = fmt.value, title = ti.value.trim(), slug = edit ? rec.slug : slugify(sl.value || title);
+        if (!title) { err.textContent = "Enter a title."; return; }
+        if (!slug) { err.textContent = "Enter a slug using letters or numbers."; return; }
+        var main = fi.files[0] || null, cover = format === "photo" ? null : (ci.files[0] || null);
+        if (!edit && !main) { err.textContent = "Choose the file to upload."; return; }
+        if (!edit && M.records.some(function (x) { return x.format === format && x.slug === slug; })) { err.textContent = "A " + format + " item with this slug already exists."; return; }
+        if ((main && main.size > MAX_UPLOAD) || (cover && cover.size > MAX_UPLOAD)) { err.textContent = "Files over 50 MB cannot be uploaded from the browser."; return; }
+        var tags = tg.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+        ok.disabled = true; ok.textContent = "Committing...";
+        mediaSave(M, mode, { format: format, slug: slug, title: title, description: de.value, tags: tags, main: main, cover: cover })
+          .then(function (sha) { formBox.innerHTML = ""; toast("Committed " + sha.slice(0, 7)); return reload(); })
+          .catch(function (ex) { err.textContent = ex.message; ok.disabled = false; ok.textContent = edit ? "Commit changes" : "Commit upload"; });
+      });
+      formBox.appendChild(f);
+      f.scrollIntoView({ block: "nearest" });
+      ti.focus();
+    }
+
+    reload().catch(function (e) {
+      if (!alive()) return;
+      grid.innerHTML = "";
+      grid.appendChild(el("div", "state bad", "Could not load media: " + e.message));
+    });
+  }
+
+  /* ---------- dashboard home: content counts and recent commits ---------- */
+  function homeExtras(r, notice, tiles, box) {
+    var seq = state.routeSeq;
+    function safe(text) { try { var v = text ? JSON.parse(text) : []; return Array.isArray(v) ? v : null; } catch (e) { return null; } }
+    Promise.all([
+      git.tree().catch(function () { return { tree: [] }; }),
+      git.text("raw/pages/pages.json").catch(function () { return null; }),
+      git.text("raw/posts/posts.json").catch(function () { return null; }),
+      git.text("raw/media/media.json").catch(function () { return null; }),
+      git.text("raw/merch/merch.json").catch(function () { return null; }),
+      gh(git.url("/commits?per_page=5&sha=" + encodeURIComponent(r.default_branch))).catch(function () { return []; })
+    ]).then(function (res) {
+      if (seq !== state.routeSeq) return;
+      var paths = (res[0].tree || []).filter(function (n) { return n.type === "blob"; }).map(function (n) { return n.path; });
+      if (!paths.some(function (p) { return p.indexOf("raw/") === 0; })) {
+        var n = el("div", "todo"); n.style.marginBottom = "16px";
+        n.appendChild(el("strong", null, "No /raw directory on " + r.default_branch));
+        n.appendChild(document.createTextNode("This repository does not look like a managed app yet. Adding a page or media item creates the folders it needs."));
+        notice.appendChild(n);
+      }
+      function count(list, word, filter) {
+        if (list === null) return "Could not read";
+        var k = filter ? list.filter(filter).length : list.length;
+        return k + " " + word + (k === 1 ? "" : "s");
+      }
+      var counts = {
+        pages: count(safe(res[1]), "page"),
+        posts: count(safe(res[2]), "post"),
+        media: count(safe(res[3]), "item"),
+        merch: count(safe(res[4]), "product", function (x) { return String(x.slug || "").indexOf("/") === -1; }),
+        files: (function () { var k = paths.filter(function (p) { return p.indexOf("raw/files/") === 0; }).length; return k + " file" + (k === 1 ? "" : "s"); })()
+      };
+      Object.keys(counts).forEach(function (k) {
+        var c = tiles.querySelector('[data-count="' + k + '"]');
+        if (c) c.textContent = counts[k];
+      });
+      var commits = res[5] || [];
+      if (commits.length) {
+        box.appendChild(el("div", "section-label", "Recent commits"));
+        var l = el("div", "links");
+        commits.forEach(function (c) {
+          var a = el("a", "link"); a.href = c.html_url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          var m = el("div", "main");
+          m.appendChild(el("div", "title", String(c.commit.message).split("\n")[0]));
+          m.appendChild(el("div", "sub", (c.commit.author && c.commit.author.name || "Unknown") + " · " + ago(c.commit.author && c.commit.author.date)));
+          a.appendChild(m); a.appendChild(el("span", "meta", c.sha.slice(0, 7)));
+          l.appendChild(a);
+        });
+        box.appendChild(l);
+      }
+    });
+  }
+
+  /* ---------- /pages ---------- */
+  var SLUG_RE = /^\/$|^\/[a-z0-9_-]+(\/[a-z0-9_-]+)*(\/\*)?$/;
+  function pageDir(slug) {
+    return slug.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean).map(function (s) { return s === "*" ? "_" : s; }).join("/");
+  }
+  function pagePaths(slug) {
+    var d = pageDir(slug);
+    return { dir: "raw/pages/" + (d ? d + "/" : ""), html: "raw/pages/" + (d ? d + "/" : "") + "page.html", css: "raw/style/" + (d ? d + "/" : "") + "page.css" };
+  }
+  /* Existing pages.json entries name the page like page.about.us.html. New entries follow that convention. */
+  function pageName(slug) {
+    var d = pageDir(slug);
+    return d ? "page." + d.split("/").join(".") + ".html" : "page.html";
+  }
+  function sortKeys(o) {
+    var out = {};
+    Object.keys(o).sort().forEach(function (k) { out[k] = o[k]; });
+    return out;
+  }
+  var PAGES_JSON = "raw/pages/pages.json";
+
+  function pagesSave(P, mode, d) {
+    var paths = pagePaths(d.slug), head;
+    return git.head().then(function (h) {
+      head = h; return git.text(PAGES_JSON, head);
+    }).then(function (text) {
+      var list = parseList(text, PAGES_JSON);
+      var i = -1;
+      list.forEach(function (x, k) { if (x.slug === d.slug) i = k; });
+      if (mode === "add" && i >= 0) throw new Error("A page with the slug " + d.slug + " already exists.");
+      var entry = i >= 0 ? Object.assign({}, list[i]) : { main: true, noindex: false, page: pageName(d.slug), pages: false, popup: true, slug: d.slug, visibility: false };
+      entry.title = d.title; entry.main = d.main; entry.visibility = d.visibility; entry.popup = d.popup; entry.noindex = d.noindex;
+      if (d.seoTitle) entry.seo = Object.assign({}, entry.seo, { title: d.seoTitle });
+      else if (entry.seo) { delete entry.seo.title; if (!Object.keys(entry.seo).length) delete entry.seo; }
+      if (i >= 0) list[i] = sortKeys(entry); else list.push(sortKeys(entry));
+      var changes = [{ path: paths.html, text: d.markup }, { path: PAGES_JSON, text: toJSON(list) }];
+      return git.commit((mode === "add" ? "Add page " : "Update page ") + d.slug, changes, head);
+    });
+  }
+
+  function pagesDelete(entry) {
+    var paths = pagePaths(entry.slug), head;
+    return git.head().then(function (h) {
+      head = h; return Promise.all([git.tree(head), git.text(PAGES_JSON, head)]);
+    }).then(function (res) {
+      var list = parseList(res[1], PAGES_JSON).filter(function (x) { return x.slug !== entry.slug; });
+      var changes = [{ path: PAGES_JSON, text: toJSON(list) }];
+      (res[0].tree || []).forEach(function (n) {
+        if (n.type !== "blob") return;
+        var direct = n.path.indexOf(paths.dir) === 0 && n.path.slice(paths.dir.length).indexOf("/") === -1;
+        if (direct || n.path === paths.css || (entry.page && n.path === "raw/pages/" + entry.page && entry.page !== "page.html")) changes.push({ path: n.path, remove: true });
+      });
+      return git.commit("Delete page " + entry.slug, changes, head);
+    });
+  }
+
+  function pagesPage(box, r) {
+    var seq = state.routeSeq;
+    var canPush = !(r.permissions && !r.permissions.push);
+    var P = { list: [], paths: {} };
+    box.appendChild(el("h1", null, "Pages"));
+    box.appendChild(el("p", "lede", "Pages listed in raw/pages/pages.json. Each page's markup lives in raw/pages/<path>/page.html. Each change is saved as one commit to " + r.default_branch + "."));
+    var bar = el("div", "mbar"), formBox = el("div"), list = el("div"), note = el("div");
+    box.appendChild(bar); box.appendChild(formBox); box.appendChild(list); box.appendChild(note);
+    list.appendChild(el("div", "state", "Loading pages..."));
+    function alive() { return seq === state.routeSeq; }
+
+    function load() {
+      return Promise.all([git.tree().catch(function () { return { tree: [] }; }), git.text(PAGES_JSON)]).then(function (res) {
+        P.paths = {};
+        (res[0].tree || []).forEach(function (n) { if (n.type === "blob") P.paths[n.path] = true; });
+        P.list = parseList(res[1], PAGES_JSON);
+      });
+    }
+    function reload() { return load().then(function () { if (alive()) { drawBar(); drawList(); } }); }
+
+    function drawBar() {
+      bar.innerHTML = "";
+      var q = el("input"); q.type = "text"; q.id = "pageSearch"; q.placeholder = "Search title or slug"; q.setAttribute("aria-label", "Search pages");
+      q.addEventListener("input", function () { drawList(q.value); });
+      var add = el("button", "btn primary", "New page"); add.type = "button"; add.disabled = !canPush;
+      add.addEventListener("click", function () { openForm("add", null); });
+      bar.appendChild(q); bar.appendChild(add);
+    }
+
+    function badge(parent, text) { parent.appendChild(el("span", "badge", text)); }
+
+    function drawList(filter) {
+      list.innerHTML = ""; note.innerHTML = "";
+      if (!canPush) note.appendChild(el("p", "hint", "You have read-only access to this repository, so adding and editing are turned off."));
+      var q = (filter || "").trim().toLowerCase();
+      var rows = P.list.filter(function (x) { return !q || (x.title || "").toLowerCase().indexOf(q) !== -1 || (x.slug || "").toLowerCase().indexOf(q) !== -1; });
+      if (!rows.length) { list.appendChild(el("div", "state", P.list.length ? "No pages match." : "No pages yet. Create the first one.")); return; }
+      var l = el("div", "links");
+      rows.forEach(function (x) {
+        var row = el("div", "link prow"), m = el("div", "main"), t = el("div", "title", x.title || x.slug);
+        if (x.visibility) badge(t, "Visible");
+        if (x.main) badge(t, "Main");
+        if (x.popup) badge(t, "Popup");
+        if (x.noindex) badge(t, "No index");
+        if (!P.paths[pagePaths(x.slug).html]) badge(t, "File missing");
+        m.appendChild(t); m.appendChild(el("div", "sub mono", x.slug));
+        row.appendChild(m);
+        var act = el("div", "mact"); act.style.margin = "0"; act.style.padding = "0";
+        var ed = el("button", "btn small", "Edit"); ed.type = "button"; ed.disabled = !canPush;
+        ed.addEventListener("click", function () { openForm("edit", x); });
+        act.appendChild(ed);
+        if (x.slug !== "/") {
+          var del = el("button", "btn small danger", "Delete"); del.type = "button"; del.disabled = !canPush;
+          var armed = false;
+          del.addEventListener("click", function () {
+            if (!armed) { armed = true; del.textContent = "Click again to delete"; setTimeout(function () { armed = false; del.textContent = "Delete"; }, 4000); return; }
+            del.disabled = true; del.textContent = "Deleting...";
+            pagesDelete(x).then(function (sha) { toast("Deleted " + x.slug + " (" + sha.slice(0, 7) + ")"); return reload(); })
+              .catch(function (e) { toast("Delete failed: " + e.message, true); del.disabled = false; del.textContent = "Delete"; armed = false; });
+          });
+          act.appendChild(del);
+        }
+        row.appendChild(act); l.appendChild(row);
+      });
+      list.appendChild(l);
+    }
+
+    function openForm(mode, entry) {
+      formBox.innerHTML = "";
+      var edit = mode === "edit";
+      var f = el("form", "card mform wide"); f.setAttribute("autocomplete", "off");
+      f.appendChild(el("h2", null, edit ? "Edit " + entry.slug : "New page"));
+      function field(label, id, node, hint) {
+        var w = el("div", "field"), l = el("label", null, label); l.setAttribute("for", id);
+        node.id = id; w.appendChild(l); w.appendChild(node);
+        if (hint) w.appendChild(el("span", "hint", hint));
+        f.appendChild(w); return node;
+      }
+      var ti = el("input"); ti.type = "text"; ti.value = edit ? entry.title || "" : "";
+      field("Title", "pgTitle", ti);
+      var sl = el("input"); sl.type = "text"; sl.spellcheck = false; sl.value = edit ? entry.slug : "/"; sl.readOnly = edit;
+      field("Slug", "pgSlug", sl, edit ? "The slug is the URL and folder, so it cannot change." : "Starts with /. End with /* for a wildcard route. Lowercase letters, numbers, - and _.");
+      var seo = el("input"); seo.type = "text"; seo.value = edit && entry.seo && entry.seo.title || "";
+      field("SEO title", "pgSeo", seo, "Optional.");
+      var flags = el("div"); flags.style.marginBottom = "14px";
+      var boxes = {};
+      [["visibility", "Visibility"], ["main", "Main"], ["popup", "Popup"], ["noindex", "No index"]].forEach(function (p) {
+        var lab = el("label", "check"), cb = el("input"); cb.type = "checkbox"; cb.id = "pg_" + p[0];
+        cb.checked = edit ? !!entry[p[0]] : (p[0] === "main" || p[0] === "popup");
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + p[1])); lab.style.marginBottom = "6px";
+        flags.appendChild(lab); boxes[p[0]] = cb;
+      });
+      f.appendChild(flags);
+      var md = el("textarea"); md.rows = 16; md.spellcheck = false; md.className = "code"; md.value = edit ? "" : "<blocks></blocks>\n";
+      var mdField = field("Markup (page.html)", "pgMarkup", md, "");
+      var mdHint = md.parentNode.querySelector(".hint") || el("span", "hint"); if (!mdHint.parentNode) md.parentNode.appendChild(mdHint);
+      var err = el("p", "err"); err.setAttribute("role", "alert"); f.appendChild(err);
+      var row = el("div", "mact");
+      var ok = el("button", "btn primary", edit ? "Commit changes" : "Commit page"); ok.type = "submit";
+      var cancel = el("button", "btn", "Cancel"); cancel.type = "button"; cancel.addEventListener("click", function () { formBox.innerHTML = ""; });
+      row.appendChild(ok); row.appendChild(cancel); f.appendChild(row);
+
+      if (edit) {
+        md.disabled = true; ok.disabled = true; mdHint.textContent = "Loading markup...";
+        git.text(pagePaths(entry.slug).html).then(function (t) {
+          if (!f.isConnected) return;
+          md.value = t == null ? "" : t; md.disabled = false; ok.disabled = false;
+          mdHint.textContent = t == null ? "This page has no page.html yet. Saving creates it." : "Styles for this page live in raw/style and are not changed here.";
+        }).catch(function (e) { mdHint.textContent = "Could not load the markup: " + e.message; });
+      } else {
+        mdHint.textContent = "A new page starts empty. Styles for it are not created here.";
+      }
+
+      f.addEventListener("submit", function (e) {
+        e.preventDefault(); err.textContent = "";
+        var title = ti.value.trim(), slug = sl.value.trim();
+        if (!title) { err.textContent = "Enter a title."; return; }
+        if (!SLUG_RE.test(slug)) { err.textContent = "The slug must start with / and use lowercase letters, numbers, - and _. Only the last segment may be *."; return; }
+        if (!edit && P.list.some(function (x) { return x.slug === slug; })) { err.textContent = "A page with the slug " + slug + " already exists."; return; }
+        ok.disabled = true; ok.textContent = "Committing...";
+        pagesSave(P, mode, {
+          slug: slug, title: title, seoTitle: seo.value.trim(), markup: md.value,
+          main: boxes.main.checked, visibility: boxes.visibility.checked, popup: boxes.popup.checked, noindex: boxes.noindex.checked
+        }).then(function (sha) { formBox.innerHTML = ""; toast("Committed " + sha.slice(0, 7)); return reload(); })
+          .catch(function (ex) { err.textContent = ex.message; ok.disabled = false; ok.textContent = edit ? "Commit changes" : "Commit page"; });
+      });
+      formBox.appendChild(f);
+      f.scrollIntoView({ block: "nearest" });
+      (edit ? md : ti).focus();
+    }
+
+    reload().catch(function (e) {
+      if (!alive()) return;
+      list.innerHTML = "";
+      list.appendChild(el("div", "state bad", "Could not load pages: " + e.message));
+    });
   }
 
   /* ---------- mobile drawer ---------- */
