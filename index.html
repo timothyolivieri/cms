@@ -158,6 +158,20 @@ a { color: inherit; }
 }
 .toast.bad { background: var(--bad); color: var(--panel); }
 
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal-scrim { position: absolute; inset: 0; background: var(--scrim); }
+.dialog { position: relative; width: min(900px, 100%); max-height: min(86vh, 100%); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.dhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.dhead h2 { font-size: 16px; margin: 0; }
+.dbody { overflow: auto; padding: 16px; }
+.optgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.opt { text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.opt:hover { border-color: var(--accent); }
+.opt .n { font-weight: 600; }
+.opt .d { font-size: 13px; color: var(--muted); }
+.pv.short { height: 84px; }
+.pv { position: relative; height: 150px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin-bottom: 6px; }
+.pv iframe { position: absolute; left: 0; top: 0; width: 1000px; height: 560px; border: 0; transform: scale(.27); transform-origin: 0 0; pointer-events: none; background: #fff; }
 /* Build */
 .dash-main.full { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 .dash-main.full .dash-inner { max-width: none; width: 100%; flex: 1; display: flex; flex-direction: column; min-height: 0; margin: 0; }
@@ -298,6 +312,13 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
     </aside>
     <div class="scrim" id="scrim"></div>
     <main class="dash-main" id="dashMain" tabindex="-1"><div class="dash-inner" id="dashBody"></div></main>
+  </div>
+</div>
+<div class="modal" id="modal" hidden>
+  <div class="modal-scrim" id="modalScrim"></div>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="dhead"><h2 id="modalTitle"></h2><button class="btn small" id="modalClose" type="button">Close</button></div>
+    <div class="dbody" id="modalBody"></div>
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
@@ -603,6 +624,7 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
 
   function drawSection(sec, r, owner, repo, rest) {
     rest = rest || [];
+    if (builderOff) { builderOff(); builderOff = null; }
     var editing = sec.key === "build" && rest[0] === "er";
     $("dashMain").classList.toggle("full", editing);
     var box = $("dashBody"); box.innerHTML = "";
@@ -1225,7 +1247,119 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
     });
   }
 
-  /* ---------- /build: page feed and blank editor frame ---------- */
+  /* ---------- premade library ---------- */
+  var PH_IMG = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#d9dce2"/><path d="M0 720 480 380l320 260 240-180 560 440z" fill="#bcc1cb"/><circle cx="1180" cy="240" r="70" fill="#bcc1cb"/></svg>');
+
+  var LIBRARY = {
+    header: [
+      { name: "Simple navigation", desc: "Site name on the left, three links on the right.",
+        html: '<header><section><card css-line-height="50px" css-padding="10px 20px"><section><box css-margin-right="auto" css-padding="0 10px"><section><href css-font-size="28px" data-href="/">Site name</href></section></box><box css-font-size="14px"><section><href css-padding="0 10px" data-href="/about">About</href><href css-padding="0 10px" data-href="/blog">Blog</href><href css-padding="0 10px" data-href="/contact">Contact</href></section></box></section></card></section></header>' },
+      { name: "Centered logo", desc: "Site name centered above a row of links.",
+        html: '<header><section css-flex-direction="column" css-align-items="center" css-padding="24px 20px" css-gap="12px"><text css-font-size="32px" css-font-weight="700">Site name</text><section css-gap="20px" css-justify-content="center" css-font-size="14px"><href data-href="/about">About</href><href data-href="/blog">Blog</href><href data-href="/contact">Contact</href></section></section></header>' }
+    ],
+    block: [
+      { name: "Hero", desc: "Large headline with a supporting sentence.",
+        html: '<block css-padding="120px 50px" css-min-height="360px"><section css-flex-direction="column" css-align-items="center" css-justify-content="center" css-gap="24px" css-text-align="center"><text css-font-size="56px" css-font-weight="700" css-line-height="1.1">A headline that says it all</text><text css-font-size="20px" css-max-width="640px">One short sentence that explains what this page is about and why it matters.</text></section></block>' },
+      { name: "Text", desc: "A heading and two paragraphs in a readable column.",
+        html: '<block css-padding="80px 50px"><section css-flex-direction="column" css-gap="20px" css-max-width="720px" css-margin="0 auto"><text css-font-size="32px" css-font-weight="700">Section heading</text><text css-font-size="18px" css-line-height="1.7">Write the first paragraph here. Keep it short and clear so people can scan it quickly.</text><text css-font-size="18px" css-line-height="1.7">Add a second paragraph with the details that did not fit in the first one.</text></section></block>' },
+      { name: "Image and text", desc: "A picture beside a heading and paragraph.",
+        html: '<block css-padding="80px 50px"><section css-flex-direction="row" css-gap="60px" css-align-items="center"><box css-flex="1"><section><picture css-height="0" css-padding-top="56.25%" css-width="100%"><img css-position="absolute" css-top="0" css-width="100%" css-height="100%" css-object-fit="cover" src="' + PH_IMG + '" alt=""></picture></section></box><box css-flex="1"><section css-flex-direction="column" css-gap="16px"><text css-font-size="32px" css-font-weight="700">Tell the story</text><text css-font-size="18px" css-line-height="1.7">Describe the picture or the idea next to it in a couple of sentences.</text></section></box></section></block>' },
+      { name: "Three columns", desc: "Three short points side by side.",
+        html: '<block css-padding="80px 50px"><section css-gap="40px"><card css-flex="1"><section css-flex-direction="column" css-gap="10px"><text css-font-size="22px" css-font-weight="700">First point</text><text css-line-height="1.6">A sentence that explains the first point.</text></section></card><card css-flex="1"><section css-flex-direction="column" css-gap="10px"><text css-font-size="22px" css-font-weight="700">Second point</text><text css-line-height="1.6">A sentence that explains the second point.</text></section></card><card css-flex="1"><section css-flex-direction="column" css-gap="10px"><text css-font-size="22px" css-font-weight="700">Third point</text><text css-line-height="1.6">A sentence that explains the third point.</text></section></card></section></block>' },
+      { name: "Call to action", desc: "A dark band with a message and a button.",
+        html: '<block css-padding="80px 50px" css-background-color="#16181d" css-color="#ffffff"><section css-flex-direction="column" css-align-items="center" css-gap="20px" css-text-align="center"><text css-font-size="36px" css-font-weight="700">Ready to get started?</text><text css-font-size="18px">Tell people what to do next.</text><box css-padding="12px 28px" css-border="1px solid #ffffff" css-border-radius="999px" data-href="/contact"><section><text>Get in touch</text></section></box></section></block>' }
+    ],
+    footer: [
+      { name: "Simple footer", desc: "A single centered line of small text.",
+        html: '<footer><section css-justify-content="center" css-padding="40px 20px" css-font-size="13px" css-border-top="1px solid #d9dce2"><text>© Site name. All rights reserved.</text></section></footer>' },
+      { name: "Three columns", desc: "Three link columns and a copyright line.",
+        html: '<footer><section css-flex-direction="column" css-padding="60px 50px 30px" css-gap="40px" css-border-top="1px solid #d9dce2"><section css-gap="40px"><card css-flex="1"><section css-flex-direction="column" css-gap="8px"><text css-font-weight="700">Explore</text><href data-href="/about">About</href><href data-href="/blog">Blog</href></section></card><card css-flex="1"><section css-flex-direction="column" css-gap="8px"><text css-font-weight="700">Contact</text><href data-href="/contact">Get in touch</href></section></card><card css-flex="1"><section css-flex-direction="column" css-gap="8px"><text css-font-weight="700">Follow</text><href data-href="/">Social link</href></section></card></section><text css-font-size="13px">© Site name. All rights reserved.</text></section></footer>' }
+    ]
+  };
+
+  /* Provisional rendering: layout rules for the page tags and a script that turns css-* attributes into styles.
+     The new runtime will replace both. */
+  var PREVIEW_BASE_CSS =
+    "html,body{margin:0}" +
+    "body{font:16px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;background:#fff;color:#111;min-height:100vh;display:flex;flex-direction:column}" +
+    "header,main,footer,block,card,box,section,row,column,flex{display:flex;box-sizing:border-box;min-width:0}" +
+    "header,main,footer,block,column{flex-direction:column}" +
+    "block>section,header>section,footer>section,card>section,box>section{flex:1 1 auto}" +
+    "text,href{display:block}ico{display:inline-flex}" +
+    "picture{display:block;position:relative}img{max-width:100%}";
+  var APPLY_CSS_JS =
+    "function applyCss(r){var all=r.querySelectorAll('*');for(var i=0;i<all.length;i++){var n=all[i],a=n.attributes;" +
+    "for(var k=0;k<a.length;k++){var nm=a[k].name;if(nm.indexOf('css-')===0&&!/^css-d[wh]\\d+px-/.test(nm))n.style.setProperty(nm.slice(4),a[k].value);}}}";
+
+  var EDITOR_CSS =
+    "#root{flex:1;display:flex;flex-direction:column}.blocks{display:flex;flex-direction:column}" +
+    ".empty{margin:auto;text-align:center;padding:40px 20px}.empty h2{margin:0 0 6px;font-size:22px}.empty p{margin:0 0 22px;color:#5d6573}" +
+    ".acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}" +
+    ".acts button{font:inherit;font-weight:600;padding:10px 18px;border-radius:8px;border:1px solid #15181e;background:#15181e;color:#fff;cursor:pointer}" +
+    ".acts button:hover{opacity:.88}.acts button:focus-visible,.strip:focus-visible{outline:2px solid #d9481c;outline-offset:2px}" +
+    ".strip{margin:12px 16px;padding:14px;border:1px dashed #9aa1ad;background:none;color:#5d6573;cursor:pointer;font:inherit;border-radius:8px}.strip:hover{border-color:#15181e;color:#15181e}";
+  var EDITOR_JS =
+    APPLY_CSS_JS +
+    "var root=document.getElementById('root');" +
+    "function strip(k,l){return '<button type=\"button\" class=\"strip\" data-add=\"'+k+'\">+ Add '+l+'</button>';}" +
+    "function render(m){var empty=!m.header&&!m.footer&&!m.blocks.length,h;" +
+    "if(empty){h='<div class=\"empty\"><h2>This page is empty</h2><p>Start with a header, a block or a footer.</p><div class=\"acts\">'+" +
+    "'<button type=\"button\" data-add=\"header\">Add new header</button><button type=\"button\" data-add=\"block\">Add new block</button><button type=\"button\" data-add=\"footer\">Add new footer</button></div></div>';}" +
+    "else{h=(m.header||strip('header','header'))+'<div class=\"blocks\">'+m.blocks.join('')+'</div>'+strip('block','block')+(m.footer||strip('footer','footer'));}" +
+    "root.innerHTML=h;applyCss(root);}" +
+    "window.addEventListener('message',function(e){if(e.source!==parent)return;var d=e.data;if(d&&d.type==='render')render(d.model);});" +
+    "document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-add]');if(b)parent.postMessage({type:'add',kind:b.getAttribute('data-add')},'*');});" +
+    "parent.postMessage({type:'ready'},'*');";
+
+  function frameDoc(css, js, body) {
+    return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>" + css + "</style></head><body>" + body + "<script>" + js + "<\/script></body></html>";
+  }
+  function editorFrameDoc() { return frameDoc(PREVIEW_BASE_CSS + EDITOR_CSS, EDITOR_JS, "<div id=\"root\"></div>"); }
+  function previewFrameDoc(html) { return frameDoc(PREVIEW_BASE_CSS, APPLY_CSS_JS + "applyCss(document.body);", html); }
+
+  /* Page markup -> { header, blocks[], footer }. Scripts and inline handlers are dropped. */
+  function parsePageModel(html) {
+    var doc = new DOMParser().parseFromString("<body>" + (html || "") + "</body>", "text/html");
+    var model = { header: null, blocks: [], footer: null };
+    Array.prototype.forEach.call(doc.querySelectorAll("script"), function (s) { s.parentNode.removeChild(s); });
+    Array.prototype.forEach.call(doc.querySelectorAll("*"), function (n) {
+      Array.prototype.slice.call(n.attributes).forEach(function (a) { if (a.name.indexOf("on") === 0) n.removeAttribute(a.name); });
+    });
+    var container = doc.body;
+    Array.prototype.forEach.call(doc.body.children, function (c) { if (c.tagName.toLowerCase() === "blocks") container = c; });
+    Array.prototype.forEach.call(container.children, function (c) {
+      var t = c.tagName.toLowerCase();
+      if (t === "header" && !model.header) model.header = c.outerHTML;
+      else if (t === "footer" && !model.footer) model.footer = c.outerHTML;
+      else if (t === "block") model.blocks.push(c.outerHTML);
+    });
+    return model;
+  }
+
+  /* ---------- library modal ---------- */
+  var modalKind = null;
+  function closeModal() { $("modal").hidden = true; $("modalBody").innerHTML = ""; modalKind = null; }
+  function openLibrary(kind, onPick) {
+    var titles = { header: "Choose a header", block: "Choose a block", footer: "Choose a footer" };
+    $("modalTitle").textContent = titles[kind];
+    var body = $("modalBody"); body.innerHTML = "";
+    var grid = el("div", "optgrid");
+    LIBRARY[kind].forEach(function (item) {
+      var b = el("button", "opt"); b.type = "button";
+      var pv = el("div", kind === "block" ? "pv" : "pv short"), f = el("iframe"); f.title = item.name + " preview"; f.tabIndex = -1; f.setAttribute("aria-hidden", "true");
+      f.setAttribute("sandbox", "allow-scripts"); f.srcdoc = previewFrameDoc(item.html); pv.appendChild(f);
+      b.appendChild(pv); b.appendChild(el("div", "n", item.name)); b.appendChild(el("div", "d", item.desc));
+      b.addEventListener("click", function () { closeModal(); onPick(item); });
+      grid.appendChild(b);
+    });
+    body.appendChild(grid);
+    modalKind = kind; $("modal").hidden = false; $("modalClose").focus();
+  }
+  $("modalClose").addEventListener("click", closeModal);
+  $("modalScrim").addEventListener("click", closeModal);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && modalKind) closeModal(); });
+
+  /* ---------- /build: page feed and editor frame ---------- */
   /* Route segment <-> slug. Home is "index"; a trailing * is written _ (same as the folder name). */
   function slugToRoute(slug) {
     var d = pageDir(slug);
@@ -1264,26 +1398,46 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
     });
   }
 
-  /* The editor frame is blank for now. The runtime and toolbar will load into it later. */
+  var builderOff = null;
   function builderPage(box, r, owner, repo, segs) {
     var seq = state.routeSeq, slug = routeToSlug(segs);
+    var model = { header: null, blocks: [], footer: null };
     var tool = el("div", "btool"), stage = el("div", "stage");
     var back = el("a", "btn small", "‹ All pages"); back.href = base(owner, repo) + "/build";
     var info = el("div", "binfo"); info.appendChild(el("strong", "mono", slug));
-    tool.appendChild(back); tool.appendChild(info);
+    tool.appendChild(back); tool.appendChild(info); tool.appendChild(el("span", "spacer")); tool.appendChild(el("span", "hint", "Changes are not saved yet"));
     var status = el("div", "state", "Opening page..."), frame = el("iframe", "bframe");
     frame.title = "Page editor"; frame.setAttribute("sandbox", "allow-scripts"); frame.hidden = true;
-    frame.srcdoc = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body></html>";
     stage.appendChild(status); stage.appendChild(frame);
     box.appendChild(tool); box.appendChild(stage);
+
+    function send() { if (frame.contentWindow) frame.contentWindow.postMessage({ type: "render", model: model }, "*"); }
+    function onMessage(e) {
+      if (e.source !== frame.contentWindow || !e.data || seq !== state.routeSeq) return;
+      if (e.data.type === "ready") { send(); return; }
+      if (e.data.type === "add" && LIBRARY[e.data.kind]) {
+        var kind = e.data.kind;
+        openLibrary(kind, function (item) {
+          if (kind === "block") model.blocks.push(item.html); else model[kind] = item.html;
+          send(); toast("Added " + item.name.toLowerCase());
+        });
+      }
+    }
+    window.addEventListener("message", onMessage);
+    builderOff = function () { window.removeEventListener("message", onMessage); closeModal(); };
+
     git.text(PAGES_JSON).then(function (text) {
       if (seq !== state.routeSeq) return;
       var found = parseList(text, PAGES_JSON).some(function (x) { return x.slug === slug; });
-      if (!found) { status.className = "state bad"; status.textContent = "No page with the slug " + slug + " in pages.json."; return; }
-      status.hidden = true; frame.hidden = false;
+      if (!found) { status.className = "state bad"; status.textContent = "No page with the slug " + slug + " in pages.json."; return null; }
+      return git.text(pagePaths(slug).html).then(function (html) {
+        if (seq !== state.routeSeq) return;
+        model = parsePageModel(html);
+        frame.srcdoc = editorFrameDoc(); frame.hidden = false; status.hidden = true;
+      });
     }).catch(function (e) {
       if (seq !== state.routeSeq) return;
-      status.className = "state bad"; status.textContent = "Could not load pages: " + e.message;
+      status.className = "state bad"; status.textContent = "Could not load the page: " + e.message;
     });
   }
 
