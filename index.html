@@ -158,6 +158,15 @@ a { color: inherit; }
 }
 .toast.bad { background: var(--bad); color: var(--panel); }
 
+/* Build */
+.dash-main.full { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dash-main.full .dash-inner { max-width: none; width: 100%; flex: 1; display: flex; flex-direction: column; min-height: 0; margin: 0; }
+.btool { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
+.binfo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.stage .state { margin: auto; }
+.bframe { flex: 1; width: 100%; border: 0; background: #fff; }
+
 /* Media page */
 .mbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
 .mbar input[type=text] { flex: 1; min-width: 160px; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--panel); }
@@ -461,7 +470,7 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
         go("#/accounts"); return;
       }
       if (p[0] === "o") return renderRepos(p[1], seq);
-      return renderDash(p[1], p[2], p[3] || "", seq);
+      return renderDash(p[1], p[2], p[3] || "", seq, p.slice(4));
     }
     go("#/accounts");
   }
@@ -543,7 +552,8 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
   /* --- dashboard shell --- */
   function base(owner, repo) { return "#/r/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo); }
 
-  function renderDash(owner, repo, key, seq) {
+  function renderDash(owner, repo, key, seq, rest) {
+    rest = rest || [];
     var sec = sectionByKey(key) || SECTIONS[0];
     showView("dashView");
     closeNav();
@@ -552,20 +562,23 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
       { label: owner, href: "#/o/" + encodeURIComponent(owner) },
       sec.key ? { label: repo, href: base(owner, repo) } : { label: repo }
     ];
-    if (sec.key) crumbs.push({ label: sec.label });
+    if (sec.key === "build" && rest[0] === "er") {
+      crumbs.push({ label: sec.label, href: base(owner, repo) + "/build" });
+      crumbs.push({ label: "Edit " + routeToSlug(rest.slice(1)) });
+    } else if (sec.key) crumbs.push({ label: sec.label });
     setCrumbs(crumbs);
     buildNav(owner, repo, sec.key);
 
     var cur = state.repo;
     if (cur && cur.owner.login.toLowerCase() === owner.toLowerCase() && cur.name.toLowerCase() === repo.toLowerCase()) {
-      drawSection(sec, cur, owner, repo); return;
+      drawSection(sec, cur, owner, repo, rest); return;
     }
     state.repo = null;
     $("dashBody").innerHTML = ""; $("dashBody").appendChild(el("div", "state", "Opening repository..."));
     gh("/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo)).then(function (r) {
       if (seq !== state.routeSeq) return;
       state.repo = r; $("ghLink").href = r.html_url;
-      drawSection(sec, r, owner, repo);
+      drawSection(sec, r, owner, repo, rest);
     }).catch(function (e) {
       if (seq !== state.routeSeq) return;
       $("dashBody").innerHTML = "";
@@ -588,12 +601,16 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
     if (state.repo) $("ghLink").href = state.repo.html_url; else $("ghLink").removeAttribute("href");
   }
 
-  function drawSection(sec, r, owner, repo) {
+  function drawSection(sec, r, owner, repo, rest) {
+    rest = rest || [];
+    var editing = sec.key === "build" && rest[0] === "er";
+    $("dashMain").classList.toggle("full", editing);
     var box = $("dashBody"); box.innerHTML = "";
     $("dashMain").scrollTop = 0;
     if (!sec.key) return drawHome(box, r, owner, repo);
     if (sec.key === "media") return mediaPage(box, r);
     if (sec.key === "pages") return pagesPage(box, r);
+    if (sec.key === "build") return editing ? builderPage(box, r, owner, repo, rest.slice(1)) : buildListPage(box, r, owner, repo);
     box.appendChild(el("h1", null, sec.label));
     box.appendChild(el("p", "lede", sec.desc));
     box.appendChild(el("p", "route-tag", base(owner, repo) + "/" + sec.key));
@@ -1205,6 +1222,68 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
       if (!alive()) return;
       list.innerHTML = "";
       list.appendChild(el("div", "state bad", "Could not load pages: " + e.message));
+    });
+  }
+
+  /* ---------- /build: page feed and blank editor frame ---------- */
+  /* Route segment <-> slug. Home is "index"; a trailing * is written _ (same as the folder name). */
+  function slugToRoute(slug) {
+    var d = pageDir(slug);
+    return d ? d.split("/").map(encodeURIComponent).join("/") : "index";
+  }
+  function routeToSlug(segs) {
+    if (!segs.length || (segs.length === 1 && segs[0] === "index")) return "/";
+    var s = segs.slice();
+    if (s[s.length - 1] === "_") s[s.length - 1] = "*";
+    return "/" + s.join("/");
+  }
+
+  function buildListPage(box, r, owner, repo) {
+    var seq = state.routeSeq;
+    box.appendChild(el("h1", null, "Build"));
+    box.appendChild(el("p", "lede", "Pick a page to open it in the visual builder."));
+    var list = el("div"); box.appendChild(list);
+    list.appendChild(el("div", "state", "Loading pages..."));
+    git.text(PAGES_JSON).then(function (text) {
+      if (seq !== state.routeSeq) return;
+      var pages = parseList(text, PAGES_JSON);
+      list.innerHTML = "";
+      if (!pages.length) { list.appendChild(el("div", "state", "No pages yet. Create one on the Pages screen first.")); return; }
+      var l = el("div", "links");
+      pages.forEach(function (x) {
+        var row = el("div", "link prow"), m = el("div", "main"), t = el("div", "title", x.title || x.slug);
+        if (x.visibility) t.appendChild(el("span", "badge", "Visible"));
+        m.appendChild(t); m.appendChild(el("div", "sub mono", x.slug)); row.appendChild(m);
+        var a = el("a", "btn small", "Edit"); a.href = base(owner, repo) + "/build/er/" + slugToRoute(x.slug);
+        row.appendChild(a); l.appendChild(row);
+      });
+      list.appendChild(l);
+    }).catch(function (e) {
+      if (seq !== state.routeSeq) return;
+      list.innerHTML = ""; list.appendChild(el("div", "state bad", "Could not load pages: " + e.message));
+    });
+  }
+
+  /* The editor frame is blank for now. The runtime and toolbar will load into it later. */
+  function builderPage(box, r, owner, repo, segs) {
+    var seq = state.routeSeq, slug = routeToSlug(segs);
+    var tool = el("div", "btool"), stage = el("div", "stage");
+    var back = el("a", "btn small", "‹ All pages"); back.href = base(owner, repo) + "/build";
+    var info = el("div", "binfo"); info.appendChild(el("strong", "mono", slug));
+    tool.appendChild(back); tool.appendChild(info);
+    var status = el("div", "state", "Opening page..."), frame = el("iframe", "bframe");
+    frame.title = "Page editor"; frame.setAttribute("sandbox", "allow-scripts"); frame.hidden = true;
+    frame.srcdoc = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body></html>";
+    stage.appendChild(status); stage.appendChild(frame);
+    box.appendChild(tool); box.appendChild(stage);
+    git.text(PAGES_JSON).then(function (text) {
+      if (seq !== state.routeSeq) return;
+      var found = parseList(text, PAGES_JSON).some(function (x) { return x.slug === slug; });
+      if (!found) { status.className = "state bad"; status.textContent = "No page with the slug " + slug + " in pages.json."; return; }
+      status.hidden = true; frame.hidden = false;
+    }).catch(function (e) {
+      if (seq !== state.routeSeq) return;
+      status.className = "state bad"; status.textContent = "Could not load pages: " + e.message;
     });
   }
 
