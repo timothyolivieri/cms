@@ -178,6 +178,39 @@ a { color: inherit; }
 .btool { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
 .binfo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.stage { position: relative; }
+.epanel { position: absolute; top: 12px; right: 12px; width: 340px; max-height: calc(100% - 24px); display: flex; flex-direction: column; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.22); z-index: 5; overflow: hidden; }
+.epanel[hidden] { display: none; }
+.epanel.left { right: auto; left: 12px; }
+.egrab { display: none; }
+.ehead { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--line); }
+.etitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etools { display: flex; gap: 6px; }
+.ebody { overflow-y: auto; padding: 4px 14px 14px; }
+.ebody .state { padding: 24px 0; text-align: center; }
+.esec { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.efield { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin-bottom: 8px; }
+.efield label { font-size: 13px; color: var(--muted); }
+.efield input, .efield select, .efield textarea, .eadd input { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--bg); color: var(--fg); font: inherit; font-size: 14px; }
+.efield textarea { resize: vertical; }
+.efield textarea.code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.egroup { border-top: 1px solid var(--line); padding: 2px 0; }
+.egroup.flat { border-top: 0; }
+.egroup summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+.egrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; padding-bottom: 6px; }
+.ecolor { display: flex; gap: 6px; }
+.ecolor input[type=color] { width: 36px; flex: none; padding: 2px; }
+.eadd { display: flex; gap: 6px; }
+.eadd .btn { flex: none; }
+.ebp .err { color: var(--bad, #c0392b); font-size: 13px; min-height: 0; }
+@media (max-width: 860px) {
+  .epanel, .epanel.left { position: static; width: 100%; max-height: 52vh; border-radius: 12px 12px 0 0; border-width: 1px 0 0; box-shadow: 0 -6px 20px rgba(0,0,0,.18); animation: epup .18s ease-out; }
+  .egrab { display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 6px auto 0; }
+  .egrid { grid-template-columns: 1fr; }
+  #dashMain .epanel .btn:nth-child(1) { display: none; }
+}
+@keyframes epup { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .epanel { animation: none !important; } }
 .stage .state { margin: auto; }
 .bframe { flex: 1; width: 100%; border: 0; background: #fff; }
 
@@ -1356,7 +1389,13 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
       while (p && p !== root) { if (selectable(p)) path.unshift(p.tagName.toLowerCase()); p = p.parentElement; }
       var attrs = {};
       Array.prototype.forEach.call(n.attributes, function (a) { attrs[a.name] = a.value; });
-      return { tag: n.tagName.toLowerCase(), path: path, attrs: attrs, text: (n.textContent || "").trim().slice(0, 200), locked: locked(n) };
+      var seen = {}, all = root.querySelectorAll("*"), re = /^css-dw(\d+)px-/;
+      Array.prototype.forEach.call(all, function (e) {
+        Array.prototype.forEach.call(e.attributes, function (a) { var m = re.exec(a.name); if (m) seen[m[1]] = 1; });
+      });
+      var bps = Object.keys(seen).map(Number).sort(function (a, b) { return b - a; });
+      var kids = n.children.length > 0;
+      return { tag: n.tagName.toLowerCase(), path: path, attrs: attrs, text: (n.textContent || "").slice(0, 20000), html: n.innerHTML.slice(0, 60000), hasChildren: kids, bps: bps, locked: locked(n) };
     }
 
     /* ---------- document structure ---------- */
@@ -1418,7 +1457,13 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
           return { type: "setAttr", node: op.node, name: op.name, value: old };
         case "setHtml":
           old = op.node.innerHTML; op.node.innerHTML = clean(parseHtml(op.value)).innerHTML;
-          return { type: "setHtml", node: op.node, value: old };
+          return { type: "rawHtml", node: op.node, value: old };
+        case "setText":
+          old = op.node.innerHTML; op.node.textContent = op.value;
+          return { type: "rawHtml", node: op.node, value: old };
+        case "rawHtml":
+          old = op.node.innerHTML; op.node.innerHTML = op.value;
+          return { type: "rawHtml", node: op.node, value: old };
         case "batch":
           return { type: "batch", ops: op.ops.map(apply).reverse() };
       }
@@ -1480,8 +1525,14 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
     }
     function doUpdate(op) {
       var n = selected; if (!n || !op) return;
-      if (op.type === "setAttr" && typeof op.name === "string" && !/^on/i.test(op.name)) run(function () { return { type: "setAttr", node: n, name: op.name, value: op.value }; }, function () { return n; });
-      else if (op.type === "setHtml") run(function () { return { type: "setHtml", node: n, value: String(op.value || "") }; }, function () { return n; });
+      if (locked(n)) return;
+      if (op.type === "setAttr") {
+        var name = op.name, val = op.value == null ? null : String(op.value);
+        if (typeof name !== "string" || !/^[a-z][a-z0-9:_-]*$/i.test(name) || /^on/i.test(name) || name.toLowerCase() === "style") return;
+        if (val != null && /^(src|href|data-href)$/i.test(name) && /^\s*(javascript|data:text\/html)/i.test(val)) return;
+        run(function () { return { type: "setAttr", node: n, name: name, value: val }; }, function () { return n; });
+      } else if (op.type === "setHtml") run(function () { return { type: "setHtml", node: n, value: String(op.value || "") }; }, function () { return n; });
+      else if (op.type === "setText") run(function () { return { type: "setText", node: n, value: String(op.value == null ? "" : op.value) }; }, function () { return n; });
     }
 
     /* ---------- overlay: highlight and toolbar live in a shadow root, outside the page's markup ---------- */
@@ -1674,6 +1725,214 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
   $("modalScrim").addEventListener("click", closeModal);
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && modalKind) closeModal(); });
 
+  /* ---------- edit panel: desktop popup / mobile drawer ---------- */
+  var STD_BPS = [1280, 1080, 960, 768, 480];
+  var EDIT_GROUPS = [
+    { id: "layout", label: "Layout", fields: [
+      { p: "flex-direction", l: "Direction", t: "select", o: ["row", "column", "row-reverse", "column-reverse"] },
+      { p: "flex-wrap", l: "Wrap", t: "select", o: ["nowrap", "wrap", "wrap-reverse"] },
+      { p: "justify-content", l: "Justify", t: "select", o: ["flex-start", "center", "flex-end", "space-between", "space-around", "space-evenly"] },
+      { p: "align-items", l: "Align", t: "select", o: ["stretch", "flex-start", "center", "flex-end", "baseline"] },
+      { p: "gap", l: "Gap", ph: "20px" },
+      { p: "flex", l: "Flex", ph: "1" }
+    ] },
+    { id: "spacing", label: "Spacing", fields: [
+      { p: "padding", l: "Padding", ph: "20px 50px" },
+      { p: "margin", l: "Margin", ph: "0 auto" }
+    ] },
+    { id: "size", label: "Size", fields: [
+      { p: "width", l: "Width", ph: "100%" },
+      { p: "height", l: "Height", ph: "auto" },
+      { p: "min-height", l: "Min height", ph: "360px" },
+      { p: "max-width", l: "Max width", ph: "720px" }
+    ] },
+    { id: "type", label: "Typography", fields: [
+      { p: "font-size", l: "Size", ph: "18px" },
+      { p: "font-weight", l: "Weight", t: "select", o: ["300", "400", "500", "600", "700", "800"] },
+      { p: "line-height", l: "Line height", ph: "1.6" },
+      { p: "text-align", l: "Align", t: "select", o: ["left", "center", "right", "justify"] },
+      { p: "color", l: "Color", t: "color" }
+    ] },
+    { id: "look", label: "Appearance", fields: [
+      { p: "background-color", l: "Background", t: "color" },
+      { p: "border", l: "Border", ph: "1px solid #d9dce2" },
+      { p: "border-radius", l: "Radius", ph: "8px" },
+      { p: "opacity", l: "Opacity", ph: "1" }
+    ] }
+  ];
+  var GROUPS_OPEN = {
+    text: ["type", "spacing"], href: ["type", "spacing"], ico: ["type"], img: ["size"], picture: ["size"],
+    block: ["spacing", "look"], section: ["layout"], card: ["layout", "spacing"], box: ["layout", "spacing"]
+  };
+
+  function createEditPanel(stage, send) {
+    var P = el("aside", "epanel"); P.hidden = true; P.setAttribute("aria-label", "Edit element");
+    var head = el("div", "ehead"), ttl = el("div", "etitle"), tools = el("div", "etools");
+    var dock = el("button", "btn small", "Swap side"); dock.type = "button"; dock.title = "Move the panel to the other side";
+    var close = el("button", "btn small", "Close"); close.type = "button";
+    tools.appendChild(dock); tools.appendChild(close); head.appendChild(ttl); head.appendChild(tools);
+    var body = el("div", "ebody");
+    P.appendChild(el("div", "egrab")); P.appendChild(head); P.appendChild(body); stage.appendChild(P);
+
+    var node = null, bp = "", extras = [], built = "", controls = [], bpSelect = null, bpSig = "", uid = 0, openState = {};
+
+    function attrFor(prop) { return "css-" + (bp ? "dw" + bp + "px-" : "") + prop; }
+    function sig(d) { return d ? d.tag + ">" + d.path.join(">") + "|" + bp + "|" + (d.hasChildren ? 1 : 0) : "none"; }
+    function push(op) { send({ type: "update", op: op }); }
+    function focused(n) { return document.activeElement === n; }
+    function field(label, input, hint, target) {
+      var w = el("div", "efield"), l = el("label", null, label); l.setAttribute("for", (target || input).id);
+      w.appendChild(l); w.appendChild(input); if (hint) w.appendChild(el("span", "hint", hint));
+      return w;
+    }
+    function newId() { return "ef" + (++uid); }
+
+    /* A text box bound to one attribute. nameOf() gives the attribute for the current breakpoint. */
+    function attrInput(nameOf, ph, fallbackOf) {
+      var i = el("input"); i.type = "text"; i.id = newId(); i.spellcheck = false;
+      function refresh() {
+        var v = node.attrs[nameOf()]; if (!focused(i)) i.value = v == null ? "" : v;
+        var fb = fallbackOf ? fallbackOf() : null; i.placeholder = fb ? "All widths: " + fb : (ph || "");
+      }
+      i.addEventListener("change", function () { push({ type: "setAttr", name: nameOf(), value: i.value.trim() || null }); });
+      controls.push(refresh);
+      return i;
+    }
+    function selectInput(nameOf, options) {
+      var s = el("select"); s.id = newId();
+      function fill(cur) {
+        s.innerHTML = "";
+        var blank = el("option", null, "Not set"); blank.value = ""; s.appendChild(blank);
+        var list = options.slice(); if (cur && list.indexOf(cur) === -1) list.push(cur);
+        list.forEach(function (o) { var op = el("option", null, o); op.value = o; s.appendChild(op); });
+        s.value = cur || "";
+      }
+      function refresh() { var v = node.attrs[nameOf()]; if (!focused(s)) fill(v == null ? "" : v); }
+      s.addEventListener("change", function () { push({ type: "setAttr", name: nameOf(), value: s.value || null }); });
+      controls.push(refresh);
+      return s;
+    }
+    function colorInput(nameOf, fallbackOf) {
+      var w = el("div", "ecolor"), t = attrInput(nameOf, "#16181d", fallbackOf), c = el("input"); c.type = "color"; c.id = newId(); c.setAttribute("aria-label", "Pick a color");
+      function sync() { c.value = /^#[0-9a-f]{6}$/i.test(t.value) ? t.value : "#000000"; }
+      controls.push(sync);
+      c.addEventListener("input", function () { t.value = c.value; });
+      c.addEventListener("change", function () { t.value = c.value; push({ type: "setAttr", name: nameOf(), value: c.value }); });
+      w.appendChild(t); w.appendChild(c); w.mainInput = t;
+      return w;
+    }
+    function areaInput(valueOf, op, mono) {
+      var a = el("textarea"); a.id = newId(); a.rows = 4; a.spellcheck = true; if (mono) a.className = "code";
+      function refresh() { if (!focused(a)) a.value = valueOf(); }
+      a.addEventListener("change", function () { push({ type: op, value: a.value }); });
+      controls.push(refresh);
+      return a;
+    }
+
+    function bpWidths() {
+      var set = {};
+      STD_BPS.concat(extras, node && node.bps || []).forEach(function (w) { set[w] = 1; });
+      return Object.keys(set).map(Number).sort(function (a, b) { return b - a; });
+    }
+    function hasOverrides(w) {
+      var re = new RegExp("^css-dw" + w + "px-");
+      return Object.keys(node.attrs).some(function (k) { return re.test(k); });
+    }
+    function fillBp() {
+      var widths = bpWidths();
+      bpSig = widths.join(",") + "|" + widths.filter(hasOverrides).join(",") + "|" + bp;
+      bpSelect.innerHTML = "";
+      var all = el("option", null, "All widths"); all.value = ""; bpSelect.appendChild(all);
+      widths.forEach(function (w) {
+        var o = el("option", null, "Up to " + w + "px" + (hasOverrides(w) ? "  •" : "")); o.value = String(w); bpSelect.appendChild(o);
+      });
+      bpSelect.value = bp;
+    }
+
+    function build() {
+      body.innerHTML = ""; controls = []; built = sig(node); bpSelect = null;
+      if (!node) { ttl.textContent = "Edit"; body.appendChild(el("div", "state", "Select an element on the page to edit it.")); return; }
+      ttl.textContent = ""; ttl.appendChild(el("strong", null, node.tag)); ttl.appendChild(el("span", "hint", " " + node.path.join(" › ")));
+      if (node.locked) { body.appendChild(el("div", "state", "This part of the page cannot be edited.")); return; }
+
+      /* Content */
+      var content = el("div", "egroup flat"), added = false;
+      if (node.tag === "img") {
+        content.appendChild(field("Image source", attrInput(function () { return "src"; }, "/raw/media/photo/name/image.jpg"))); added = true;
+        content.appendChild(field("Alt text", attrInput(function () { return "alt"; }, "Describe the image")));
+      } else if (!node.hasChildren && node.tag !== "picture") {
+        content.appendChild(field("Text", areaInput(function () { return node.text; }, "setText"))); added = true;
+      } else if (node.tag === "text" || node.tag === "href") {
+        content.appendChild(field("Content (HTML)", areaInput(function () { return node.html; }, "setHtml", true))); added = true;
+      }
+      if (node.tag === "href" || node.attrs["data-href"] != null) {
+        content.appendChild(field("Link", attrInput(function () { return "data-href"; }, "/about"))); added = true;
+      }
+      if (added) { var ch = el("div", "esec", "Content"); body.appendChild(ch); body.appendChild(content); }
+
+      /* Breakpoint dropdown with a box to type a new width */
+      var bpBox = el("div", "ebp");
+      bpBox.appendChild(el("div", "esec", "Styles"));
+      bpSelect = el("select"); bpSelect.id = newId();
+      bpBox.appendChild(field("Editing for", bpSelect, "A width applies at that screen width and below."));
+      fillBp();
+      bpSelect.addEventListener("change", function () { bp = bpSelect.value; build(); });
+      var addRow = el("div", "eadd"), w = el("input"); w.type = "number"; w.id = newId(); w.min = "100"; w.max = "4000"; w.step = "1"; w.placeholder = "New width in px"; w.setAttribute("aria-label", "New breakpoint width in pixels");
+      var addBtn = el("button", "btn small", "Add"); addBtn.type = "button";
+      var bpErr = el("div", "err"); bpErr.setAttribute("role", "alert");
+      function addWidth() {
+        var n = parseInt(w.value, 10);
+        if (!(n >= 100 && n <= 4000)) { bpErr.textContent = "Enter a whole number from 100 to 4000."; return; }
+        bpErr.textContent = ""; if (extras.indexOf(n) === -1) extras.push(n);
+        bp = String(n); build();
+      }
+      addBtn.addEventListener("click", addWidth);
+      w.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); addWidth(); } });
+      addRow.appendChild(w); addRow.appendChild(addBtn); bpBox.appendChild(addRow); bpBox.appendChild(bpErr);
+      body.appendChild(bpBox);
+
+      /* Style groups */
+      var openIds = openState[node.tag] || GROUPS_OPEN[node.tag] || ["spacing"];
+      EDIT_GROUPS.forEach(function (g) {
+        var d = el("details", "egroup"); d.open = openIds.indexOf(g.id) !== -1;
+        d.addEventListener("toggle", function () {
+          var cur = EDIT_GROUPS.filter(function (x) { return body.querySelector('details[data-g="' + x.id + '"]').open; }).map(function (x) { return x.id; });
+          openState[node.tag] = cur;
+        });
+        d.setAttribute("data-g", g.id);
+        d.appendChild(el("summary", null, g.label));
+        var inner = el("div", "egrid");
+        g.fields.forEach(function (f) {
+          var nameOf = function () { return attrFor(f.p); }, fb = function () { return bp ? node.attrs["css-" + f.p] : null; };
+          var ctl = f.t === "select" ? selectInput(nameOf, f.o) : f.t === "color" ? colorInput(nameOf, fb) : attrInput(nameOf, f.ph, fb);
+          inner.appendChild(field(f.l, ctl, null, ctl.mainInput || ctl));
+        });
+        d.appendChild(inner); body.appendChild(d);
+      });
+      refresh();
+    }
+    function refresh() {
+      controls.forEach(function (c) { c(); });
+      if (bpSelect && !focused(bpSelect)) {
+        var widths = bpWidths();
+        var s = widths.join(",") + "|" + widths.filter(hasOverrides).join(",") + "|" + bp;
+        if (s !== bpSig) fillBp();
+      }
+    }
+
+    function update(d) {
+      node = d;
+      if (P.hidden) return;
+      if (sig(d) !== built) build(); else refresh();
+    }
+    function open() { P.hidden = false; build(); }
+    function hide() { P.hidden = true; }
+    close.addEventListener("click", hide);
+    dock.addEventListener("click", function () { P.classList.toggle("left"); });
+    P.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.stopPropagation(); hide(); } });
+    return { update: update, open: open, close: hide };
+  }
+
   /* ---------- /build: page feed and editor frame ---------- */
   /* Route segment <-> slug. Home is "index"; a trailing * is written _ (same as the folder name). */
   function slugToRoute(slug) {
@@ -1750,7 +2009,8 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
         openLibrary(kind, function (item) { send({ type: "insert", kind: kind, html: item.html }); toast("Added " + item.name.toLowerCase()); });
       } else if (d.type === "history") {
         undoBtn.disabled = !d.canUndo; redoBtn.disabled = !d.canRedo; status.textContent = d.dirty ? "Unsaved changes" : "No changes";
-      } else if (d.type === "edit") toast("The edit panel is coming next.");
+      } else if (d.type === "select") panel.update(d.node);
+      else if (d.type === "edit") panel.open();
     }
     function onKey(e) {
       var t = e.target; if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
@@ -1759,6 +2019,7 @@ textarea.code { font-family: var(--mono); font-size: 13px; line-height: 1.55; }
       if (k === "z" && !e.shiftKey) { e.preventDefault(); send({ type: "undo" }); }
       else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); send({ type: "redo" }); }
     }
+    var panel = createEditPanel(stage, send);
     undoBtn.addEventListener("click", function () { send({ type: "undo" }); });
     redoBtn.addEventListener("click", function () { send({ type: "redo" }); });
     window.addEventListener("message", onMessage); window.addEventListener("keydown", onKey);
